@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* === MODERN & ELEGANCE TASARIM (v42.0) === */
+        /* === MODERN & ELEGANCE TASARIM (v43.0) === */
         :root {
             --primary: #2563eb;           
             --primary-soft: #dbeafe;      
@@ -147,8 +147,6 @@
         .result-card.alert { border-left-color: var(--primary); } 
         .result-card.warning { border-left-color: var(--accent-warning); } 
         .result-card.info { border-left-color: var(--secondary); }
-        
-        /* === YENİ: ŞEFFAF/SOLUK KART STİLİ (Meningokok için) === */
         .result-card.faint { 
             border-left-color: #cbd5e1; 
             background-color: rgba(255, 255, 255, 0.6);
@@ -280,9 +278,9 @@
                     <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_metabolik" checked> Kronik Kalp / Akciğer / Diyabet (DM)</label>
                     <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_karaciger"> Kronik Karaciğer Hastalığı</label>
                     <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_bobrek"> Kronik Böbrek Hastalığı</label>
-                    <label class="checkbox-item"><input type="radio" name="r_hastalik" value="immunsupresyon"> İmmünsüpresyonu Olanlar</label>
-                    <label class="checkbox-item"><input type="radio" name="r_hastalik" value="aspleni"> Aspleni (Dalak Yokluğu/İşlevsizliği)</label>
-                    <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kompleman"> Kompleman Yetmezliği</label>
+                    <label class="checkbox-item"><input type="radio" name="r_hastalik" value="immunsupresyon"> İmmünsüpresyon / İmmünmodülatör Tedavi (Kronik İnflamatuar)</label>
+                    <label class="checkbox-item"><input type="radio" name="r_hastalik" value="aspleni"> Aspleni / Splenektomi / Orak Hücreli Anemi</label>
+                    <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kompleman"> Kompleman Yetmezliği / Eculizumab Kullanımı</label>
                     <label class="checkbox-item"><input type="radio" name="r_hastalik" value="solid_organ"> Solid Organ Nakli Alıcıları</label>
                     <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kok_hucre"> Hematopoetik Kök Hücre Nakli</label>
                     <label class="checkbox-item"><input type="radio" name="r_hastalik" value="hiv"> HIV / AIDS</label>
@@ -366,15 +364,12 @@
         const meslekDiv = document.getElementById('meslekBolumu');
 
         if (yas.toplamAy < 216) {
-            // Erişkin bölümleri gizle
             eriskinDiv.classList.add('hidden'); 
             gebelikDiv.classList.add('hidden'); 
             meslekDiv.classList.add('hidden');
 
-            // 4 Aydan küçükse Çocuk Sorularını da gizle
             if (yas.toplamAy < 4) {
                 cocukDiv.classList.add('hidden');
-                // Gizliyken "tam" aşı durumunu varsayılan yap (Telafi çıkmasın)
                 const tamRadio = document.querySelector('input[name="asiDurumu"][value="tam"]');
                 if(tamRadio) tamRadio.checked = true;
             } else {
@@ -532,12 +527,7 @@
                 else { oneriler.push({baslik: "Suçiçeği Aşısı", detay: "Hastalığı geçirmemiş veya bağışıklığı olmayanlara en az 1 ay ara ile iki doz aşı önerilir.", tip: "info"}); }
                 oneriler.push({baslik: "Hepatit B Aşısı", detay: "Sağlık çalışanları için mesleki temas riskleri nedeniyle önerilir.", tip: "alert"});
                 oneriler.push({baslik: "Hepatit A Aşısı", detay: "Riskli birimlerde çalışan sağlık personeli için önerilir.", tip: "info"});
-                // GÜNCELLEME: Şeffaf Meningokok Önerisi
-                oneriler.push({
-                    baslik: "Meningokok Aşısı", 
-                    detay: "Sadece laboratuvarda meningokok ile karşılaşma ihtimali bulunan personele önerilir.", 
-                    tip: "faint" // Şeffaf kart stili
-                });
+                oneriler.push({baslik: "Meningokok Aşısı", detay: "Sadece laboratuvarda meningokok ile karşılaşma ihtimali bulunan personele önerilir.", tip: "faint"});
             }
 
             if (!gebelikDurumu && !saglikciDurumu && yas.yil >= 18) {
@@ -545,17 +535,34 @@
             }
 
             switch (seciliHastalik) {
-                case 'kronik_metabolik': oneriler.push({baslik: "Pnömokok (Zatürre) Aşıları", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Aşılar arasında en az 1 YIL ara olmalıdır.", tip: "alert"}); break;
-                case 'kronik_karaciger': oneriler.push({baslik: "Kronik Karaciğer Hastalığı", detay: "• Hepatit A\n• Hepatit B\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Pnömokok aşıları arasında en az 1 YIL ara olmalıdır.", tip: "alert"}); break;
-                case 'kronik_bobrek': oneriler.push({baslik: "Kronik Böbrek Hastalığı", detay: "• Hepatit B Aşısı", tip: "alert"}); break;
-                case 'immunsupresyon': oneriler.push({baslik: "İmmünsüpresyonu Olanlar", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Aşılar arasında en az 8 HAFTA ara olmalıdır.", tip: "alert"}); break;
-                case 'aspleni': oneriler.push({baslik: "Aspleni (Dalak Yokluğu)", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı\n• İnfluenza (Grip) Aşısı", tip: "alert"}); break;
-                case 'kompleman': oneriler.push({baslik: "Kompleman Yetmezliği", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)", tip: "alert"}); break;
+                case 'kronik_metabolik': 
+                    oneriler.push({baslik: "Pnömokok (Zatürre) Aşıları", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Aşılar arasında en az 1 YIL ara olmalıdır.", tip: "alert"}); 
+                    break;
+                case 'kronik_karaciger': 
+                    oneriler.push({baslik: "Kronik Karaciğer Hastalığı", detay: "• Hepatit A\n• Hepatit B\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Pnömokok aşıları arasında en az 1 YIL ara olmalıdır.", tip: "alert"}); 
+                    break;
+                case 'kronik_bobrek': 
+                    oneriler.push({baslik: "Kronik Böbrek Hastalığı", detay: "• Hepatit B Aşısı", tip: "alert"}); 
+                    break;
+                
+                // GÜNCELLENEN RİSK GRUPLARI (Meningokok Eklendi)
+                case 'immunsupresyon': 
+                    oneriler.push({baslik: "İmmünsüpresyon / İmmünmodülatör Tedavi", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Meningokok Aşısı (Meningokoksemiden korunma için)", tip: "alert"}); 
+                    break;
+                case 'aspleni': 
+                    oneriler.push({baslik: "Aspleni / Orak Hücreli Anemi / Splenektomi", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı\n• İnfluenza (Grip) Aşısı", tip: "alert"}); 
+                    break;
+                case 'kompleman': 
+                    oneriler.push({baslik: "Kompleman Yetmezliği / Eculizumab", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı", tip: "alert"}); 
+                    break;
+                case 'bos_cochlear': 
+                    oneriler.push({baslik: "BOS Kaçağı / Kohlear İmplant", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı", tip: "alert"}); 
+                    break;
+                    
                 case 'solid_organ': oneriler.push({baslik: "Solid Organ Nakli Alıcıları", detay: "• Hepatit A\n• Hepatit B\n• Suçiçeği", tip: "alert"}); break;
                 case 'kok_hucre': oneriler.push({baslik: "Hematopoetik Kök Hücre Nakli", detay: "• Hepatit A\n• Hepatit B\n• KKK (Kızamık-Kızamıkçık-Kabakulak)\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n• Haemophilus influenzae tip B (Hib)\n• Suçiçeği\n• İnaktif Polio Aşısı", tip: "alert"}); break;
                 case 'hiv': oneriler.push({baslik: "HIV / AIDS", detay: "• Hepatit A\n• Hepatit B\n• KKK (Kızamık-Kızamıkçık-Kabakulak)\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n👉 Aşılama takvimi CD4 sayısına göre uzman tarafından değerlendirilmelidir.", tip: "alert"}); break;
                 case 'pihtilasma': oneriler.push({baslik: "Pıhtılaşma Bozukluğu", detay: "• Hepatit A Aşısı", tip: "alert"}); break;
-                case 'bos_cochlear': oneriler.push({baslik: "Kohlear İmplant / BOS Kaçağı", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)", tip: "alert"}); break;
             }
 
             if (yas.yil >= 65) {

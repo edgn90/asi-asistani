@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* === MODERN & ELEGANCE TASARIM (v41.0) === */
+        /* === MODERN & ELEGANCE TASARIM (v42.0) === */
         :root {
             --primary: #2563eb;           
             --primary-soft: #dbeafe;      
@@ -147,6 +147,13 @@
         .result-card.alert { border-left-color: var(--primary); } 
         .result-card.warning { border-left-color: var(--accent-warning); } 
         .result-card.info { border-left-color: var(--secondary); }
+        
+        /* === YENİ: ŞEFFAF/SOLUK KART STİLİ (Meningokok için) === */
+        .result-card.faint { 
+            border-left-color: #cbd5e1; 
+            background-color: rgba(255, 255, 255, 0.6);
+            opacity: 0.75;
+        }
 
         .card-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 15px; }
         .card-title { font-weight: 700; font-size: 1.15rem; color: var(--text-primary); flex: 1; line-height: 1.4; }
@@ -525,7 +532,12 @@
                 else { oneriler.push({baslik: "Suçiçeği Aşısı", detay: "Hastalığı geçirmemiş veya bağışıklığı olmayanlara en az 1 ay ara ile iki doz aşı önerilir.", tip: "info"}); }
                 oneriler.push({baslik: "Hepatit B Aşısı", detay: "Sağlık çalışanları için mesleki temas riskleri nedeniyle önerilir.", tip: "alert"});
                 oneriler.push({baslik: "Hepatit A Aşısı", detay: "Riskli birimlerde çalışan sağlık personeli için önerilir.", tip: "info"});
-                oneriler.push({baslik: "Meningokok Aşısı", detay: "Laboratuvar personeli gibi risk grupları için önerilir.", tip: "info"});
+                // GÜNCELLEME: Şeffaf Meningokok Önerisi
+                oneriler.push({
+                    baslik: "Meningokok Aşısı", 
+                    detay: "Sadece laboratuvarda meningokok ile karşılaşma ihtimali bulunan personele önerilir.", 
+                    tip: "faint" // Şeffaf kart stili
+                });
             }
 
             if (!gebelikDurumu && !saglikciDurumu && yas.yil >= 18) {

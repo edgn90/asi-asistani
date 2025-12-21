@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* === MODERN & ELEGANCE TASARIM (v43.0) === */
+        /* === MODERN & ELEGANCE TASARIM (v44.0) === */
         :root {
             --primary: #2563eb;           
             --primary-soft: #dbeafe;      
@@ -54,20 +54,13 @@
         }
 
         h1 { 
-            text-align: center; 
-            color: var(--primary);
-            font-weight: 800; 
-            letter-spacing: -0.025em; 
-            margin-bottom: 8px; 
-            font-size: 2.4rem;
+            text-align: center; color: var(--primary); font-weight: 800; letter-spacing: -0.025em; 
+            margin-bottom: 8px; font-size: 2.4rem;
         }
         
         .subtitle { 
-            text-align: center; 
-            color: var(--text-secondary); 
-            font-size: 1.1rem; 
-            margin-bottom: 40px; 
-            font-weight: 500; 
+            text-align: center; color: var(--text-secondary); font-size: 1.1rem; 
+            margin-bottom: 40px; font-weight: 500; 
         }
 
         .top-warning {
@@ -141,6 +134,7 @@
         .result-card {
             background: white; padding: 28px; margin-bottom: 24px; border-radius: var(--radius-lg);
             border-left: 4px solid; box-shadow: var(--shadow-md); transition: all 0.3s ease; position: relative;
+            break-inside: avoid; /* Print: Kartın bölünmesini engeller */
         }
         .result-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
         
@@ -179,7 +173,7 @@
             content: ''; position: absolute; left: 7px; top: 5px; bottom: 5px;
             width: 2px; background-color: #e2e8f0;
         }
-        .catchup-step { position: relative; margin-bottom: 24px; padding-left: 20px; }
+        .catchup-step { position: relative; margin-bottom: 24px; padding-left: 20px; break-inside: avoid; }
         .catchup-step:last-child { margin-bottom: 0; }
         .catchup-step::after {
             content: ''; position: absolute; left: 0; top: 8px;
@@ -197,10 +191,57 @@
             box-shadow: var(--shadow-sm);
         }
 
+        /* === YAZDIRMA BUTONU STİLİ === */
+        .print-btn {
+            background: #ffffff !important; color: var(--text-primary) !important; 
+            border: 2px solid #e2e8f0 !important; margin-top: 20px !important;
+            box-shadow: none !important;
+        }
+        .print-btn:hover { background: #f8fafc !important; border-color: #cbd5e1 !important; transform: translateY(-2px); }
+
+        /* === PRINT HEADER (Sadece yazdırırken görünür) === */
+        #printHeader { display: none; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+        #printHeader h2 { margin: 0; color: #000; font-size: 1.8rem; }
+        #printHeader p { margin: 5px 0 0 0; color: #444; font-size: 1rem; }
+
         .hidden { display: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
         .form-section:not(.hidden), #detayliRiskListesi:not(.hidden) { animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+
+        /* ============================
+           === PROFESYONEL PRINT CSS === 
+           ============================ */
+        @media print {
+            @page { margin: 1.5cm; }
+            body { background: white; padding: 0; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .container { 
+                box-shadow: none; border: none; padding: 0; margin: 0; max-width: 100%;
+            }
+            
+            /* GİZLENECEKLER */
+            .form-section, button, .top-warning, .status-toggle, h1, .subtitle { 
+                display: none !important; 
+            }
+
+            /* GÖRÜNECEKLER */
+            #printHeader { display: block; } /* Başlığı aç */
+            #sonucAlani { display: block !important; margin-top: 0; animation: none; }
+            
+            /* SADELEŞTİRME */
+            .result-card { 
+                box-shadow: none; border: 1px solid #ddd; border-left-width: 4px;
+                margin-bottom: 15px; padding: 15px; page-break-inside: avoid;
+            }
+            .card-title { color: #000; font-size: 1.1rem; }
+            .card-body { color: #000; }
+            
+            /* Timeline Düzeltmeleri */
+            .catchup-content { border: 1px solid #ccc; box-shadow: none; }
+            
+            /* Link vb temizliği */
+            a { text-decoration: none; color: black; }
+        }
 
     </style>
 </head>
@@ -209,6 +250,11 @@
 <div class="container">
     <h1>💉 Akıllı Aşı Asistanı</h1>
     <p class="subtitle">Kişiselleştirilmiş Aşı Önerileri</p>
+
+    <div id="printHeader">
+        <h2>Aşı Takvimi Raporu</h2>
+        <p id="printInfoLine">Oluşturulma Tarihi: ...</p>
+    </div>
 
     <div class="top-warning">
         <span style="font-size: 1.5rem;">⚠️</span>
@@ -296,6 +342,8 @@
     <div id="sonucAlani">
         <h3 style="justify-content: center;">📋 Önerilen Aşı Takvimi</h3>
         <div id="liste"></div>
+        
+        <button onclick="window.print()" class="print-btn">🖨️ Bu Listeyi Yazdır / PDF Olarak Kaydet</button>
     </div>
 </div>
 
@@ -433,6 +481,11 @@
         const bugun = new Date();
         const yas = hesaplaTamYas(dogumTarihi, bugun);
 
+        // --- PRINT HEADER BİLGİSİNİ DOLDUR ---
+        const gunAyYil = bugun.toLocaleDateString('tr-TR');
+        let yasMetni = `${yas.yil} Yıl ${yas.ay} Ay ${yas.gun} Gün`;
+        document.getElementById('printInfoLine').innerHTML = `<strong>Tarih:</strong> ${gunAyYil} <br> <strong>Hasta Yaşı:</strong> ${yasMetni}`;
+
         let oneriler = [];
 
         // SENARYO 1: ÇOCUK TELAFİ
@@ -527,7 +580,11 @@
                 else { oneriler.push({baslik: "Suçiçeği Aşısı", detay: "Hastalığı geçirmemiş veya bağışıklığı olmayanlara en az 1 ay ara ile iki doz aşı önerilir.", tip: "info"}); }
                 oneriler.push({baslik: "Hepatit B Aşısı", detay: "Sağlık çalışanları için mesleki temas riskleri nedeniyle önerilir.", tip: "alert"});
                 oneriler.push({baslik: "Hepatit A Aşısı", detay: "Riskli birimlerde çalışan sağlık personeli için önerilir.", tip: "info"});
-                oneriler.push({baslik: "Meningokok Aşısı", detay: "Sadece laboratuvarda meningokok ile karşılaşma ihtimali bulunan personele önerilir.", tip: "faint"});
+                oneriler.push({
+                    baslik: "Meningokok Aşısı", 
+                    detay: "Sadece laboratuvarda meningokok ile karşılaşma ihtimali bulunan personele önerilir.", 
+                    tip: "faint"
+                });
             }
 
             if (!gebelikDurumu && !saglikciDurumu && yas.yil >= 18) {
@@ -545,7 +602,6 @@
                     oneriler.push({baslik: "Kronik Böbrek Hastalığı", detay: "• Hepatit B Aşısı", tip: "alert"}); 
                     break;
                 
-                // GÜNCELLENEN RİSK GRUPLARI (Meningokok Eklendi)
                 case 'immunsupresyon': 
                     oneriler.push({baslik: "İmmünsüpresyon / İmmünmodülatör Tedavi", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Meningokok Aşısı (Meningokoksemiden korunma için)", tip: "alert"}); 
                     break;

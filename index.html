@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* === MODERN & ELEGANCE TASARIM (v45.0 - Final Gold) === */
+        /* === MODERN & ELEGANCE TASARIM (v46.0 - Final) === */
         :root {
             --primary: #2563eb;           
             --primary-soft: #dbeafe;      
@@ -334,7 +334,7 @@
             <div class="card-header-row">
                 <span class="card-title">🌬️ İnfluenza (Grip) Sezonu Uyarısı</span>
             </div>
-            <span class="card-body">Şu an <strong>Eylül - Mart</strong> dönemindeyiz. Grip sezonunda olduğumuz için, özellikle risk grubundaysanız (65+ yaş, kronik hastalık, gebelik, sağlık çalışanı) grip aşınızı yaptırmanız şiddetle önerilir.</span>
+            <span class="card-body">Şu an <strong>Eylül - Mart</strong> dönemindeyiz ve size İnfluenza (Grip) aşısı önerilmektedir. Lütfen aşı olmayı ihmal etmeyiniz.</span>
         </div>
 
         <div id="liste"></div>
@@ -416,29 +416,20 @@
         else { card.classList.remove('completed'); labelText.textContent = "Bu aşıyı oldum"; }
     }
 
-    // === 4. YENİ SORGULAMA (RESET) FONKSİYONU ===
+    // === 4. YENİ SORGULAMA (RESET) ===
     function temizle() {
-        // Formu temizle
         document.getElementById('dogumTarihi').value = "";
         document.getElementById('yasBilgisi').style.display = 'none';
         document.getElementById('cinsiyet').value = "erkek";
-        
-        // Radyo butonlarını varsayılana döndür
         document.querySelector('input[name="asiDurumu"][value="tam"]').checked = true;
         document.querySelector('input[name="ana_risk_durumu"][value="hayir"]').checked = true;
         document.querySelector('input[name="r_hastalik"][value="kronik_metabolik"]').checked = true;
-        
-        // Gizli bölümleri kapat
         document.getElementById('cocukBolumu').classList.add('hidden');
         document.getElementById('eriskinBolumu').classList.add('hidden');
         document.getElementById('detayliRiskListesi').classList.add('hidden');
         document.getElementById('gebelikBolumu').classList.add('hidden');
         document.getElementById('meslekBolumu').classList.add('hidden');
-        
-        // Sonuç alanını gizle
         document.getElementById('sonucAlani').style.display = 'none';
-        
-        // Sayfanın başına git
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -471,12 +462,6 @@
         // PRINT HEADER
         const gunAyYil = bugun.toLocaleDateString('tr-TR');
         document.getElementById('printInfoLine').innerHTML = `<strong>Tarih:</strong> ${gunAyYil} <br> <strong>Hasta Yaşı:</strong> ${yas.yil} Yıl ${yas.ay} Ay ${yas.gun} Gün`;
-
-        // GRİP MEVSİMİ KONTROLÜ (Eylül(8) - Mart(2))
-        const ay = bugun.getMonth(); // 0=Ocak, 11=Aralık
-        const gripZamani = (ay >= 8 || ay <= 2); 
-        const gripUyarisiDiv = document.getElementById('gripUyarisi');
-        if (gripZamani) { gripUyarisiDiv.classList.remove('hidden'); } else { gripUyarisiDiv.classList.add('hidden'); }
 
         let oneriler = [];
 
@@ -589,6 +574,23 @@
                 if (!pneuVar) { oneriler.push({baslik: "Pnömokok Aşısı", detay: "65 yaş üstü herkese (KPA13 + 1 yıl sonra PPA23) önerilir.", tip: "warning"}); }
             }
         }
+
+        // --- YENİ MANTIK: GRİP UYARISI SADECE ÖNERİLERDE VARSA ÇIKSIN ---
+        // 1. Önce sezonu kontrol et
+        const ay = bugun.getMonth(); // 0=Ocak, 11=Aralık
+        const gripZamani = (ay >= 8 || ay <= 2);
+        
+        // 2. Sonra öneri listesinde "İnfluenza" veya "Grip" geçiyor mu diye bak
+        const gripAsisiVarMi = oneriler.some(item => item.baslik.includes("İnfluenza") || item.baslik.includes("Grip"));
+
+        const gripUyarisiDiv = document.getElementById('gripUyarisi');
+        // 3. Her iki koşul da (Sezon + Öneri) sağlanıyorsa göster
+        if (gripZamani && gripAsisiVarMi) { 
+            gripUyarisiDiv.classList.remove('hidden'); 
+        } else { 
+            gripUyarisiDiv.classList.add('hidden'); 
+        }
+        // ----------------------------------------------------------------
 
         const liste = document.getElementById('liste');
         liste.innerHTML = "";

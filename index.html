@@ -235,4 +235,377 @@
                 margin-bottom: 15px; padding: 15px; page-break-inside: avoid;
             }
             .catchup-content { border: 1px solid #ccc; box-shadow: none; }
-            a {
+            a { text-decoration: none; color: black; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>💉 Akıllı Aşı Asistanı</h1>
+    <p class="subtitle">Kişiselleştirilmiş Aşı Önerileri</p>
+
+    <div id="printHeader">
+        <h2>Aşı Takvimi Raporu</h2>
+        <p id="printInfoLine">Oluşturulma Tarihi: ...</p>
+    </div>
+
+    <div class="top-warning">
+        <span style="font-size: 1.5rem;">⚠️</span>
+        <div>Bu öneriler bilgilendirme amaçlıdır. Nihai karar için lütfen hekiminize danışınız.</div>
+    </div>
+
+    <div id="anaFormAlani">
+        <div class="form-section bg-light">
+            <label class="main-label">Doğum Tarihi:</label>
+            <input type="date" id="dogumTarihi" onchange="yasKontrolu()">
+            
+            <div id="yasBilgisi"></div>
+
+            <div style="margin-top: 30px;">
+                <label class="main-label">Cinsiyet:</label>
+                <select id="cinsiyet" onchange="yasKontrolu()">
+                    <option value="erkek">Erkek</option>
+                    <option value="kadin">Kadın</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="cocukBolumu" class="form-section bg-child hidden">
+            <h3>👶 Çocuk Aşı Durumu</h3>
+            <label class="main-label">Çocuğun bugüne kadarki aşıları ulusal takvime göre yapıldı mı?</label>
+            <div class="checkbox-grid">
+                <label class="checkbox-item"><input type="radio" name="asiDurumu" value="tam" checked><span>✅ Evet (Yaşına göre tam aşılı)</span></label>
+                <label class="checkbox-item"><input type="radio" name="asiDurumu" value="eksik"><span>❌ Hayır (Aşıları eksik/yapılmadı)</span></label>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 15px; padding-left: 5px;">ℹ️ "Hayır" seçerseniz telafi (hızlandırılmış) takvim oluşturulacaktır.</p>
+        </div>
+
+        <div id="gebelikBolumu" class="form-section bg-adult hidden">
+            <label class="main-label">🤰 Gebelik Durumu:</label>
+            <select id="gebelikDurumu">
+                <option value="hayir">Gebe Değil</option>
+                <option value="evet">Evet, Gebe</option>
+            </select>
+        </div>
+
+        <div id="meslekBolumu" class="form-section bg-adult hidden">
+            <label class="main-label">👨‍⚕️ Meslek / Risk Durumu:</label>
+            <select id="meslekDurumu">
+                <option value="diger">Diğer / Riskli Meslek Değil</option>
+                <option value="saglikci">⚕️ Sağlık Çalışanı / Stajyer</option>
+            </select>
+        </div>
+
+        <div id="eriskinBolumu" class="form-section bg-adult hidden">
+            <h3>🧑 Tıbbi Risk Faktörleri</h3>
+            <label class="main-label">Aşağıdaki hastalıklardan hangisi mevcut?</label>
+            <div class="checkbox-grid" style="margin-bottom: 30px;">
+                 <label class="checkbox-item"><input type="radio" name="ana_risk_durumu" value="hayir" onchange="riskDurumuDegisti()" checked> <span>Herhangi bir hastalığım/risk durumum yok</span></label>
+                 <label class="checkbox-item"><input type="radio" name="ana_risk_durumu" value="evet" onchange="riskDurumuDegisti()"> <span>Hastalığım/risk durumum var</span></label>
+            </div>
+            <div id="detayliRiskListesi" class="hidden">
+                <div style="padding: 28px; background-color: #fff7ed; border-radius: var(--radius-md); border: 1px solid #ffedd5;">
+                    <label class="main-label" style="font-size: 0.95rem; color: var(--accent-warning); margin-bottom: 20px;">Lütfen durumu seçiniz:</label>
+                    <div class="checkbox-grid">
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_metabolik" checked> Kronik Kalp / Akciğer / Diyabet (DM)</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_karaciger"> Kronik Karaciğer Hastalığı</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_bobrek"> Kronik Böbrek Hastalığı</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="immunsupresyon"> İmmünsüpresyon / İmmünmodülatör Tedavi</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="aspleni"> Aspleni / Splenektomi / Orak Hücreli Anemi</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kompleman"> Kompleman Yetmezliği / Eculizumab Kullanımı</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="solid_organ"> Solid Organ Nakli Alıcıları</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kok_hucre"> Hematopoetik Kök Hücre Nakli</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="hiv"> HIV / AIDS</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="pihtilasma"> Pıhtılaşma Bozukluğu</label>
+                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="bos_cochlear"> Kohlear İmplant / BOS Kaçağı</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button onclick="sorgula()" id="sorgulaBtn">Sonuçları Göster</button>
+    </div>
+
+    <div id="sonucAlani">
+        <h3 style="justify-content: center;">📋 Önerilen Aşı Takvimi</h3>
+        
+        <div id="gripUyarisi" class="result-card seasonal hidden">
+            <div class="card-header-row">
+                <span class="card-title">🌬️ İnfluenza (Grip) Sezonu Uyarısı</span>
+            </div>
+            <span class="card-body">Şu an <strong>Eylül - Mart</strong> dönemindeyiz. Grip sezonunda olduğumuz için, özellikle risk grubundaysanız (65+ yaş, kronik hastalık, gebelik, sağlık çalışanı) grip aşınızı yaptırmanız şiddetle önerilir.</span>
+        </div>
+
+        <div id="liste"></div>
+        
+        <div class="action-buttons">
+            <button onclick="window.print()" class="print-btn">🖨️ Yazdır / PDF</button>
+            <button onclick="temizle()" class="reset-btn">🔄 Yeni Sorgu</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // === 1. HASSAS YAŞ HESAPLAMA MOTORU ===
+    function hesaplaTamYas(dogumTarihi, bugun) {
+        let yil = bugun.getFullYear() - dogumTarihi.getFullYear();
+        let ay = bugun.getMonth() - dogumTarihi.getMonth();
+        let gun = bugun.getDate() - dogumTarihi.getDate();
+        if (gun < 0) { ay--; const oncekiAy = new Date(bugun.getFullYear(), bugun.getMonth(), 0).getDate(); gun += oncekiAy; }
+        if (ay < 0) { yil--; ay += 12; }
+        const toplamAy = (yil * 12) + ay;
+        return { yil, ay, gun, toplamAy };
+    }
+
+    // === 2. ARAYÜZ VE KONTROLLER ===
+    function riskDurumuDegisti() {
+        const anaDurum = document.querySelector('input[name="ana_risk_durumu"]:checked').value;
+        const detayListesi = document.getElementById('detayliRiskListesi');
+        if (anaDurum === 'evet') { detayListesi.classList.remove('hidden'); } else { detayListesi.classList.add('hidden'); }
+    }
+
+    function yasKontrolu() {
+        const dtInput = document.getElementById('dogumTarihi').value;
+        const yasBilgisiDiv = document.getElementById('yasBilgisi');
+        if (!dtInput) { yasBilgisiDiv.style.display = 'none'; return; }
+
+        const dogumTarihi = new Date(dtInput);
+        const bugun = new Date();
+        
+        if (dogumTarihi > bugun) {
+            yasBilgisiDiv.style.display = 'block'; yasBilgisiDiv.innerHTML = "⚠️ İleri bir tarih seçtiniz.";
+            yasBilgisiDiv.style.backgroundColor = "#fef2f2"; yasBilgisiDiv.style.borderColor = "#fee2e2"; yasBilgisiDiv.style.color = "#dc2626";
+            return;
+        }
+
+        const yas = hesaplaTamYas(dogumTarihi, bugun);
+        yasBilgisiDiv.style.display = 'block';
+        yasBilgisiDiv.style.backgroundColor = ""; yasBilgisiDiv.style.borderColor = ""; yasBilgisiDiv.style.color = "";
+        yasBilgisiDiv.innerHTML = `📅 Yaşınız: ${yas.yil} Yıl ${yas.ay} Ay ${yas.gun} Gün`;
+        
+        const cinsiyet = document.getElementById('cinsiyet').value;
+        const cocukDiv = document.getElementById('cocukBolumu');
+        const eriskinDiv = document.getElementById('eriskinBolumu');
+        const gebelikDiv = document.getElementById('gebelikBolumu');
+        const meslekDiv = document.getElementById('meslekBolumu');
+
+        if (yas.toplamAy < 216) {
+            eriskinDiv.classList.add('hidden'); gebelikDiv.classList.add('hidden'); meslekDiv.classList.add('hidden');
+            if (yas.toplamAy < 4) {
+                cocukDiv.classList.add('hidden');
+                const tamRadio = document.querySelector('input[name="asiDurumu"][value="tam"]');
+                if(tamRadio) tamRadio.checked = true;
+            } else { cocukDiv.classList.remove('hidden'); }
+        } else {
+            cocukDiv.classList.add('hidden'); eriskinDiv.classList.remove('hidden');
+            if (cinsiyet === 'kadin' && yas.yil >= 18 && yas.yil <= 49) { gebelikDiv.classList.remove('hidden'); } 
+            else { gebelikDiv.classList.add('hidden'); document.getElementById('gebelikDurumu').value = "hayir"; }
+            if (yas.yil >= 18 && yas.yil <= 65) { meslekDiv.classList.remove('hidden'); } 
+            else { meslekDiv.classList.add('hidden'); document.getElementById('meslekDurumu').value = "diger"; }
+        }
+    }
+    document.addEventListener('DOMContentLoaded', yasKontrolu);
+
+    // === 3. KART DURUM DEĞİŞTİRME ===
+    function durumDegistir(cardId) {
+        const card = document.getElementById(cardId);
+        const checkbox = card.querySelector('input[type="checkbox"]');
+        const labelText = card.querySelector('.status-text');
+        if (checkbox.checked) { card.classList.add('completed'); labelText.textContent = "✅ TAMAMLANDI"; } 
+        else { card.classList.remove('completed'); labelText.textContent = "Bu aşıyı oldum"; }
+    }
+
+    // === 4. YENİ SORGULAMA (RESET) FONKSİYONU ===
+    function temizle() {
+        // Formu temizle
+        document.getElementById('dogumTarihi').value = "";
+        document.getElementById('yasBilgisi').style.display = 'none';
+        document.getElementById('cinsiyet').value = "erkek";
+        
+        // Radyo butonlarını varsayılana döndür
+        document.querySelector('input[name="asiDurumu"][value="tam"]').checked = true;
+        document.querySelector('input[name="ana_risk_durumu"][value="hayir"]').checked = true;
+        document.querySelector('input[name="r_hastalik"][value="kronik_metabolik"]').checked = true;
+        
+        // Gizli bölümleri kapat
+        document.getElementById('cocukBolumu').classList.add('hidden');
+        document.getElementById('eriskinBolumu').classList.add('hidden');
+        document.getElementById('detayliRiskListesi').classList.add('hidden');
+        document.getElementById('gebelikBolumu').classList.add('hidden');
+        document.getElementById('meslekBolumu').classList.add('hidden');
+        
+        // Sonuç alanını gizle
+        document.getElementById('sonucAlani').style.display = 'none';
+        
+        // Sayfanın başına git
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // === 5. TIMELINE & TAKVİM VERİSİ ===
+    function createStep(zaman, asilar) {
+        return `<div class="catchup-step"><div class="catchup-header">${zaman}</div><div class="catchup-content">${asilar}</div></div>`;
+    }
+    const ulusalTakvim = {
+        0:  ["Hepatit B (1. Doz)"], 
+        1:  ["Hepatit B (2. Doz) - 1. Ayın Sonunda"], 
+        2:  ["BCG (Verem)", "KPA (1. Doz)", "6'lı karma aşı (DaBT-İPA-Hib-HepB) (1. Doz)"], 
+        4:  ["KPA (2. Doz)", "6'lı karma aşı (DaBT-İPA-Hib-HepB) (2. Doz)"], 
+        6:  ["KPA (3. Doz)", "6'lı karma aşı (DaBT-İPA-Hib-HepB) (3. Doz)", "OPA (Oral Polio)"], 
+        9:  ["Ek Doz KKK (Salgın durumu varsa/Doktor kararı)"], 
+        12: ["KPA (Pekiştirme)", "KKK (1. Doz)", "Suçiçeği"], 
+        18: ["6'lı karma aşı (DaBT-İPA-Hib-HepB) (Pekiştirme)", "Hep-A (1. Doz)", "OPA (Pekiştirme)"], 
+        24: ["Hep-A (2. Doz)"], 
+        48: ["KKK (2. Doz)", "4'lü Karma"], 
+        156: ["Td (Erişkin Tipi Tetanoz-Difteri) - 13 Yaş Hatırlatma Dozu"]
+    };
+
+    function sorgula() {
+        const dtInput = document.getElementById('dogumTarihi').value;
+        if (!dtInput) { alert("Lütfen doğum tarihi giriniz."); return; }
+
+        const dogumTarihi = new Date(dtInput);
+        const bugun = new Date();
+        const yas = hesaplaTamYas(dogumTarihi, bugun);
+
+        // PRINT HEADER
+        const gunAyYil = bugun.toLocaleDateString('tr-TR');
+        document.getElementById('printInfoLine').innerHTML = `<strong>Tarih:</strong> ${gunAyYil} <br> <strong>Hasta Yaşı:</strong> ${yas.yil} Yıl ${yas.ay} Ay ${yas.gun} Gün`;
+
+        // GRİP MEVSİMİ KONTROLÜ (Eylül(8) - Mart(2))
+        const ay = bugun.getMonth(); // 0=Ocak, 11=Aralık
+        const gripZamani = (ay >= 8 || ay <= 2); 
+        const gripUyarisiDiv = document.getElementById('gripUyarisi');
+        if (gripZamani) { gripUyarisiDiv.classList.remove('hidden'); } else { gripUyarisiDiv.classList.add('hidden'); }
+
+        let oneriler = [];
+
+        // SENARYO 1: ÇOCUK TELAFİ
+        if (yas.toplamAy < 216) {
+            const durum = document.querySelector('input[name="asiDurumu"]:checked').value;
+            if (durum === 'tam') {
+                if (ulusalTakvim[yas.toplamAy]) { 
+                    ulusalTakvim[yas.toplamAy].forEach(asi => { oneriler.push({baslik: asi, detay: "Bu ay (doldurulan ay) takvime göre yapılmalıdır.", tip: "alert"}); }); 
+                } else {
+                    oneriler.push({baslik: "Bu Ay Rutin Aşı Yok", detay: "Bebeğiniz şu an " + yas.ay + ". ayını doldurmuştur. Bir sonraki aşı zamanını bekleyiniz.", tip: "info"});
+                }
+            } else {
+                let plan = `<div class="catchup-timeline">`;
+                if (yas.toplamAy >= 4 && yas.toplamAy <= 11) {
+                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, Önce PPD, 2 gün sonra BCG");
+                    plan += createStep("1 Ay Sonra", "DaBT-İPA-Hib-HepB");
+                    plan += createStep("2 Ay Sonra", "DaBT-İPA-Hib-HepB, OPA, KPA");
+                    plan += createStep("6 Ay Sonra", "DaBT-İPA-Hib-HepB, OPA, KPA");
+                    plan += createStep("Not", "Ek doz KKK (9.ay), KKK-Suçiçeği (12.ay), Hep-A (18.ay)");
+                } else if (yas.toplamAy >= 12 && yas.toplamAy <= 14) {
+                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, PPD");
+                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
+                    plan += createStep("2 Ay Sonra", "DaBT-İPA-Hib-HepB, OPA, KPA");
+                    plan += createStep("6 Ay Sonra", "DaBT-İPA, HepB, OPA, KPA");
+                } else if (yas.toplamAy >= 15 && yas.toplamAy <= 17) {
+                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, PPD");
+                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
+                    plan += createStep("2 Ay Sonra", "DaBT-İPA, HepB, OPA, KPA");
+                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, KPA");
+                } else if (yas.toplamAy >= 18 && yas.toplamAy <= 23) {
+                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, Hep-A, PPD");
+                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
+                    plan += createStep("2 Ay Sonra", "DaBT-İPA, HepB, OPA, KPA");
+                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, KPA, Hep-A");
+                } else if (yas.toplamAy >= 24 && yas.toplamAy <= 47) {
+                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, Hep-A, PPD");
+                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
+                    plan += createStep("2 Ay Sonra", "DaBT-İPA, HepB, OPA");
+                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, KPA, Hep-A");
+                } else if (yas.toplamAy >= 48 && yas.toplamAy <= 59) {
+                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, Hep-A, PPD");
+                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
+                    plan += createStep("1 Ay Sonra", "DaBT-İPA, OPA, Hep-B, KKK");
+                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, Hep-A, Hep-B");
+                } else if (yas.toplamAy >= 60 && yas.toplamAy <= 71) {
+                    plan += createStep("İlk Karşılaşma", "DaBT-İPA, Hep-B, KPA, Hep-A, PPD");
+                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
+                    plan += createStep("1 Ay Sonra", "DaBT-İPA, OPA, Hep-B, KKK");
+                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, Hep-A, Hep-B");
+                } else if (yas.toplamAy >= 72) {
+                    plan += createStep("1. Karşılaşma", "Tdab/Td, İPA/OPA, Hep-B, Hep-A, KKK, Suçiçeği");
+                    plan += createStep("2. Karşılaşma (1 Ay Sonra)", "Tdab/Td, OPA/İPA, Hep-B, KKK");
+                    plan += createStep("Tamamlama (6 ay sonra)", "Tdab/Td, OPA/İPA, Hep-B, Hep-A");
+                } else {
+                    plan += createStep("Bilgi", "4 aydan küçük bebekler için standart takvime uyulmalıdır.");
+                }
+                plan += `</div>`;
+                oneriler.push({baslik: "🚨 TELAFİ PLANI (Aşısız/Eksik)", detay: plan, tip: "alert"});
+            }
+        }
+        // SENARYO 2: ERİŞKİN
+        else {
+            const gebelikDurumu = document.getElementById('gebelikDurumu').value === 'evet';
+            const saglikciDurumu = document.getElementById('meslekDurumu').value === 'saglikci';
+            const anaRisk = document.querySelector('input[name="ana_risk_durumu"]:checked').value;
+            let seciliHastalik = 'yok';
+            if (anaRisk === 'evet') { seciliHastalik = document.querySelector('input[name="r_hastalik"]:checked').value; }
+
+            if (gebelikDurumu) {
+                oneriler.push({baslik: "Mevsimsel İnfluenza (Grip)", detay: "Gebeliğin 2. veya 3. trimesterinde, her yıl EYLÜL–MART döneminde 1 doz önerilir.", tip: "alert"});
+                const tdapDetay = `<span class="step-header">A) Primer Serisi TAM OLANLAR (Her Gebelikte):</span>1 doz Tdap, tercihen 18–24. haftalarda (en geç 32. haftanın sonuna kadar).<span class="step-header">B) Primer Serisi EKSİK OLANLAR:</span>1. doz Tdap 18–24. haftalarda. 2. doz Td 28–32. haftalarda.`;
+                oneriler.push({baslik: "Tdap / Td (Tetanoz-Boğmaca)", detay: tdapDetay, tip: "alert"});
+            }
+
+            if (saglikciDurumu) {
+                oneriler.push({baslik: "Td (Erişkin tip Tetanoz-Difteri) Aşısı", detay: "Daha önce aşılanma durumu kayıtlı olmayan tüm sağlık çalışanlarının 3 doz Td aşısı ile primer bağışıklamalarının tamamlanması gerekmektedir.\nPrimer serisi tamamlanan tüm sağlık çalışanlarına 10 yılda bir hatırlatma dozu yapılmalıdır.", tip: "alert"});
+                if (gebelikDurumu) { oneriler.push({baslik: "KKK (Kızamık-Kızamıkçık-Kabakulak) Aşısı", detay: "⚠️ Gebelik nedeniyle şu an KONTRENDİKEDİR (Yapılamaz).", tip: "warning"}); } 
+                else { oneriler.push({baslik: "KKK (Kızamık-Kızamıkçık-Kabakulak) Aşısı", detay: "Hastalığı geçirmemiş veya bağışıklığı olmayanlara en az 1 ay ara ile iki doz KKK aşısı önerilir.", tip: "info"}); }
+                oneriler.push({baslik: "Mevsimsel İnfluenza (Grip) Aşısı", detay: "Her yıl 1 doz aşı uygulaması önerilir.", tip: "info"});
+                if (gebelikDurumu) { oneriler.push({baslik: "Suçiçeği Aşısı", detay: "⚠️ Gebelik nedeniyle şu an KONTRENDİKEDİR.", tip: "warning"}); } 
+                else { oneriler.push({baslik: "Suçiçeği Aşısı", detay: "Hastalığı geçirmemiş veya bağışıklığı olmayanlara en az 1 ay ara ile iki doz aşı önerilir.", tip: "info"}); }
+                oneriler.push({baslik: "Hepatit B Aşısı", detay: "Sağlık çalışanları için mesleki temas riskleri nedeniyle önerilir.", tip: "alert"});
+                oneriler.push({baslik: "Hepatit A Aşısı", detay: "Riskli birimlerde çalışan sağlık personeli için önerilir.", tip: "info"});
+                oneriler.push({baslik: "Meningokok Aşısı", detay: "Sadece laboratuvarda meningokok ile karşılaşma ihtimali bulunan personele önerilir.", tip: "faint"});
+            }
+
+            if (!gebelikDurumu && !saglikciDurumu && yas.yil >= 18) {
+                oneriler.push({baslik: "Erişkin Tip Tetanos-Difteri (Td)", detay: "Eksik ise 3 doz birincil bağışıklama, tam ise 10 yılda bir hatırlatma.", tip: "info"});
+            }
+
+            switch (seciliHastalik) {
+                case 'kronik_metabolik': oneriler.push({baslik: "Pnömokok (Zatürre) Aşıları", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Aşılar arasında en az 1 YIL ara olmalıdır.", tip: "alert"}); break;
+                case 'kronik_karaciger': oneriler.push({baslik: "Kronik Karaciğer Hastalığı", detay: "• Hepatit A\n• Hepatit B\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Pnömokok aşıları arasında en az 1 YIL ara olmalıdır.", tip: "alert"}); break;
+                case 'kronik_bobrek': oneriler.push({baslik: "Kronik Böbrek Hastalığı", detay: "• Hepatit B Aşısı", tip: "alert"}); break;
+                case 'immunsupresyon': oneriler.push({baslik: "İmmünsüpresyon / İmmünmodülatör Tedavi", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Meningokok Aşısı (Meningokoksemiden korunma için)", tip: "alert"}); break;
+                case 'aspleni': oneriler.push({baslik: "Aspleni / Orak Hücreli Anemi / Splenektomi", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı\n• İnfluenza (Grip) Aşısı", tip: "alert"}); break;
+                case 'kompleman': oneriler.push({baslik: "Kompleman Yetmezliği / Eculizumab", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı", tip: "alert"}); break;
+                case 'bos_cochlear': oneriler.push({baslik: "BOS Kaçağı / Kohlear İmplant", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı", tip: "alert"}); break;
+                case 'solid_organ': oneriler.push({baslik: "Solid Organ Nakli Alıcıları", detay: "• Hepatit A\n• Hepatit B\n• Suçiçeği", tip: "alert"}); break;
+                case 'kok_hucre': oneriler.push({baslik: "Hematopoetik Kök Hücre Nakli", detay: "• Hepatit A\n• Hepatit B\n• KKK (Kızamık-Kızamıkçık-Kabakulak)\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n• Haemophilus influenzae tip B (Hib)\n• Suçiçeği\n• İnaktif Polio Aşısı", tip: "alert"}); break;
+                case 'hiv': oneriler.push({baslik: "HIV / AIDS", detay: "• Hepatit A\n• Hepatit B\n• KKK (Kızamık-Kızamıkçık-Kabakulak)\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n👉 Aşılama takvimi CD4 sayısına göre uzman tarafından değerlendirilmelidir.", tip: "alert"}); break;
+                case 'pihtilasma': oneriler.push({baslik: "Pıhtılaşma Bozukluğu", detay: "• Hepatit A Aşısı", tip: "alert"}); break;
+            }
+
+            if (yas.yil >= 65) {
+                const fluVar = ['aspleni'].includes(seciliHastalik);
+                const pneuVar = ['kronik_metabolik', 'kronik_karaciger', 'immunsupresyon', 'aspleni', 'kompleman', 'kok_hucre', 'hiv', 'bos_cochlear'].includes(seciliHastalik);
+                if (!fluVar) { oneriler.push({baslik: "Mevsimsel İnfluenza (Grip)", detay: "65 yaş üstü herkese yıllık önerilir.", tip: "info"}); }
+                if (!pneuVar) { oneriler.push({baslik: "Pnömokok Aşısı", detay: "65 yaş üstü herkese (KPA13 + 1 yıl sonra PPA23) önerilir.", tip: "warning"}); }
+            }
+        }
+
+        const liste = document.getElementById('liste');
+        liste.innerHTML = "";
+        
+        if (oneriler.length === 0) {
+            liste.innerHTML = "<div class='result-card info'>Tebrikler, mevcut risklerinize göre ek bir aşı önerisi bulunmamaktadır.</div>";
+        } else {
+            oneriler.forEach((item, index) => {
+                const isTelafi = item.baslik.includes("TELAFİ PLANI");
+                const checkboxHTML = isTelafi ? '' : `<label class="status-toggle"><input type="checkbox" onchange="durumDegistir('card-${index}')"><span class="status-text">Bu aşıyı oldum</span></label>`;
+                const extraClass = (item.tip === 'faint') ? 'faint' : item.tip;
+                liste.innerHTML += `<div class="result-card ${extraClass}" id="card-${index}"><div class="card-header-row"><span class="card-title">${item.baslik}</span>${checkboxHTML}</div><span class="card-body">${item.detay}</span></div>`;
+            });
+        }
+        document.getElementById('sonucAlani').style.display = 'block';
+    }
+</script>
+
+</body>
+</html>

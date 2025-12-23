@@ -1,613 +1,443 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Akıllı Aşı Asistanı</title>
+import streamlit as st
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import io
+from fpdf import FPDF
+import altair as alt
+
+# --- SAYFA AYARLARI ---
+st.set_page_config(page_title="Akıllı Aşı Lojistik Paneli", layout="wide")
+
+st.title("💉 Akıllı Aşı Talep Tahmini ve Stok Yönetim Paneli")
+
+# --- YARDIMCI FONKSİYONLAR ---
+def clean_number(x):
+    if isinstance(x, str):
+        return x.replace('.', '').replace(',', '').replace('"', '').strip()
+    return x
+
+def get_dates_from_csv(file):
+    try:
+        file.seek(0)
+        lines = [file.readline().decode('iso-8859-9') for _ in range(15)]
+        file.seek(0)
+        start_date, end_date = None, None
+        for line in lines:
+            if "Baslangiç Tarihi" in line:
+                parts = line.split(',')
+                for p in parts:
+                    if "20" in p and "." in p: start_date = p.strip().replace('"', '')
+            if "Bitis Tarihi" in line:
+                parts = line.split(',')
+                for p in parts:
+                    if "20" in p and "." in p: end_date = p.strip().replace('"', '')
+        if start_date and end_date:
+            d1 = datetime.strptime(start_date, "%d.%m.%Y")
+            d2 = datetime.strptime(end_date, "%d.%m.%Y")
+            diff = (d2 - d1).days + 1
+            return diff, start_date, end_date
+    except:
+        pass
+    return 91, None, None
+
+def to_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Rapor')
+    return output.getvalue()
+
+def tr_fix(text):
+    if not isinstance(text, str):
+        text = str(text)
+    text = text.replace("🚨", "").replace("✅", "").replace("⚠️", "")
+    rep = {"İ":"I","ı":"i","Ğ":"G","ğ":"g","Ş":"S","ş":"s","ç":"c","Ç":"C","ö":"o","Ö":"O","ü":"u","Ü":"U"}
+    for k, v in rep.items():
+        text = text.replace(k, v)
+    return text.strip()
+
+def to_pdf(df, title):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, tr_fix(title), ln=True, align='C')
+    pdf.ln(5)
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    pdf.set_font("Helvetica", "B", 8)
+    cols = df.columns.tolist()
+    col_width = 190 / len(cols)
+    
+    for col in cols:
+        pdf.cell(col_width, 8, tr_fix(str(col)), 1)
+    pdf.ln()
+    
+    pdf.set_font("Helvetica", "", 7)
+    for i in range(len(df)):
+        for col in cols:
+            val = tr_fix(str(df.iloc[i][col]))
+            pdf.cell(col_width, 7, val[:25], 1)
+        pdf.ln()
+    
+    return bytes(pdf.output())
 
-    <style>
-        /* === MODERN & ELEGANCE TASARIM (v46.0 - Final) === */
-        :root {
-            --primary: #2563eb;           
-            --primary-soft: #dbeafe;      
-            --secondary: #4f46e5;         
+# --- YAN MENÜ: KOMPAKT AYARLAR ---
+st.sidebar.markdown("### ⚙️ Ayarlar")
+
+plan_suresi = st.sidebar.slider("Plan Süresi (Gün)", 7, 90, 15)
+guvenlik_marji = st.sidebar.slider("Güvenlik Payı (%)", 0, 100, 20) / 100
+
+c1, c2 = st.sidebar.columns(2)
+with c1:
+    kritik_esik = st.number_input("Kritik (Gün)", value=3)
+with c2:
+    asiri_esik = st.number_input("Aşırı (Gün)", value=60)
+
+# --- DOSYA YÜKLEME ALANI ---
+col_u1, col_u2 = st.columns(2)
+with col_u1:
+    tuketim_file = st.file_uploader("📂 Dönemsel Tüketim Raporu (CSV)", type=["csv"])
+with col_u2:
+    stok_file = st.file_uploader("📂 Stok Durum Raporu Birim Bazında (CSV)", type=["csv"])
+
+# --- ANA PROGRAM ---
+if tuketim_file and stok_file:
+    try:
+        oto_gun_sayisi, s_tarih, b_tarih = get_dates_from_csv(tuketim_file)
+        
+        # --- CSV OKUMA ---
+        try:
+            tuketim_file.seek(0)
+            df_raw_t = pd.read_csv(tuketim_file, header=7, encoding='utf-8')
+        except Exception:
+            tuketim_file.seek(0)
+            df_raw_t = pd.read_csv(tuketim_file, header=7, encoding='iso-8859-9')
             
-            --accent-warning: #f59e0b;    
-            --accent-danger: #dc2626;     
-            --accent-success: #10b981;    
+        try:
+            stok_file.seek(0)
+            df_raw_s = pd.read_csv(stok_file, header=3, encoding='utf-8')
+        except Exception:
+            stok_file.seek(0)
+            df_raw_s = pd.read_csv(stok_file, header=3, encoding='iso-8859-9')
+        
+        # Temizlik
+        df_raw_t.columns = [c.strip() for c in df_raw_t.columns]
+        df_raw_s.columns = [c.strip() for c in df_raw_s.columns]
+
+        # --- AKILLI SÜTUN ONARICI ---
+        def smart_fix_columns(df):
+            rename_map = {}
+            for col in df.columns:
+                col_upper = col.upper()
+                if 'ZAYI' in col_upper:
+                    rename_map[col] = 'ZAYI'
+                elif col_upper.startswith('IL') and col_upper.endswith('E'): 
+                    rename_map[col] = 'ILÇE'
+                elif 'BIRIM' in col_upper and 'ADI' in col_upper:
+                    rename_map[col] = 'BIRIM ADI'
+                elif 'BIRIM' in col_upper and 'TIPI' in col_upper:
+                    rename_map[col] = 'BIRIM TIPI'
+                elif 'TAN' in col_upper and 'IMI' in col_upper:
+                    rename_map[col] = 'ÜRÜN TANIMI'
+                elif 'TOPLAM' in col_upper and 'DOZ' in col_upper and 'UYGULANAN' not in col_upper and 'ZAYI' not in col_upper:
+                    rename_map[col] = 'TOPLAM DOZ'
+            if rename_map:
+                df.rename(columns=rename_map, inplace=True)
+            return df
+
+        df_raw_s = smart_fix_columns(df_raw_s)
+        df_raw_t = smart_fix_columns(df_raw_t)
+        
+        # İsim eşitlemesi
+        if 'BIRIM ADI' in df_raw_s.columns:
+             df_raw_s.rename(columns={'BIRIM ADI': 'BIRIM'}, inplace=True)
+
+        # Veri Doldurma
+        df_raw_t[['ILÇE', 'BIRIM']] = df_raw_t[['ILÇE', 'BIRIM']].ffill()
+        df_raw_s[['ILÇE', 'BIRIM', 'BIRIM TIPI']] = df_raw_s[['ILÇE', 'BIRIM', 'BIRIM TIPI']].ffill()
+        
+        # Sayısal Dönüşümler
+        df_raw_t['Tuketim'] = pd.to_numeric(df_raw_t['UYGULANAN DOZ'].astype(str).apply(clean_number), errors='coerce').fillna(0)
+        
+        if 'ZAYI' in df_raw_t.columns:
+            df_raw_t['Zayi'] = pd.to_numeric(df_raw_t['ZAYI'].astype(str).apply(clean_number), errors='coerce').fillna(0)
+        else:
+            df_raw_t['Zayi'] = 0
+
+        stok_col = 'TOPLAM DOZ' if 'TOPLAM DOZ' in df_raw_s.columns else df_raw_s.columns[-1]
+        df_raw_s['Stok'] = pd.to_numeric(df_raw_s[stok_col].astype(str).apply(clean_number), errors='coerce').fillna(0)
+
+        # --- KRİTİK AYRIŞTIRMA (ANA DEPO FİLTRESİ) ---
+        mask_ism_stok = (df_raw_s['ILÇE'].str.contains('FATIH', case=False, na=False)) & \
+                        (df_raw_s['BIRIM'].str.contains('ISM', case=False, na=False))
+        
+        mask_ism_tuketim = (df_raw_t['ILÇE'].str.contains('FATIH', case=False, na=False)) & \
+                           (df_raw_t['BIRIM'].str.contains('ISM', case=False, na=False))
+
+        # SAHA VERİLERİ (İSM HARİÇ)
+        df_s_saha = df_raw_s[~mask_ism_stok].copy()
+        df_t_saha = df_raw_t[~mask_ism_tuketim].copy()
+
+        # ANA DEPO VERİLERİ
+        df_s_ism = df_raw_s[mask_ism_stok].copy()
+        df_t_ism = df_raw_t[mask_ism_tuketim].copy()
+
+        # --- MERGE VE HESAPLAMA (SADECE SAHA VERİSİ İLE) ---
+        df_c = df_t_saha.groupby(['ILÇE', 'BIRIM', 'ÜRÜN TANIMI']).agg({'Tuketim': 'sum', 'Zayi': 'sum'}).reset_index()
+        df_c.columns = ['Ilce', 'Birim', 'Urun', 'Tuketim', 'Zayi']
+        
+        df_s_grp = df_s_saha.groupby(['ILÇE', 'BIRIM', 'ÜRÜN TANIMI', 'BIRIM TIPI'])['Stok'].sum().reset_index()
+        df_s_grp.columns = ['Ilce', 'Birim', 'Urun', 'Tip', 'Stok']
+        
+        res_df = pd.merge(df_c, df_s_grp, on=['Ilce', 'Birim', 'Urun'], how='outer').fillna(0)
+        res_df['Tip'] = res_df['Tip'].replace(0, 'Bilinmiyor')
+
+        # Planlama Hesaplamaları
+        res_df['Gunluk_Hiz'] = res_df['Tuketim'] / oto_gun_sayisi
+        res_df['Ihtiyac'] = ((res_df['Gunluk_Hiz'] * plan_suresi) * (1 + guvenlik_marji)) - res_df['Stok']
+        res_df['Gonderilecek'] = res_df['Ihtiyac'].apply(lambda x: np.ceil(x) if x > 0 else 0)
+        res_df['Yetme_Suresi'] = res_df.apply(lambda r: round(r['Stok'] / r['Gunluk_Hiz'], 1) if r['Gunluk_Hiz'] > 0 else 999, axis=1)
+
+        # --- DURUM BELİRLEME (TSM HARIÇ) ---
+        def get_durum(row):
+            if row['Yetme_Suresi'] < kritik_esik:
+                return "🚨 KRİTİK"
             
-            --bg-body: #f8fafc;           
-            --bg-surface: #ffffff;        
+            tip_str = str(row['Tip']).upper()
             
-            --text-primary: #1e293b;      
-            --text-secondary: #64748b;    
+            if row['Yetme_Suresi'] > asiri_esik:
+                if any(x in tip_str for x in ['ASM', 'SON KULLANICI']):
+                    return "⚠️ AŞIRI"
             
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.08);
-            --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.02);
-            --shadow-primary: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+            return "✅ Yeterli"
 
-            --radius-md: 12px;
-            --radius-lg: 20px;            
-        }
+        res_df['Durum'] = res_df.apply(get_durum, axis=1)
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-body);
-            color: var(--text-primary);
-            padding: 30px 20px;
-            min-height: 100vh;
-            line-height: 1.6;
-            background-image: linear-gradient(to bottom right, #f1f5f9, #f8fafc);
-        }
-
-        .container {
-            max-width: 720px;
-            margin: 0 auto;
-            background: var(--bg-surface);
-            padding: 45px;
-            border-radius: 24px;
-            box-shadow: var(--shadow-lg);
-            border: 1px solid rgba(255,255,255,0.5);
-        }
-
-        h1 { 
-            text-align: center; color: var(--primary); font-weight: 800; letter-spacing: -0.025em; 
-            margin-bottom: 8px; font-size: 2.4rem;
-        }
+        # --- FİLTRELER ---
+        sec_ilce = st.sidebar.multiselect("📍 İlçe Filtrele", options=sorted(res_df['Ilce'].unique()))
+        sec_asi = st.sidebar.multiselect("💉 Aşı Filtrele", options=sorted(res_df['Urun'].unique()))
         
-        .subtitle { 
-            text-align: center; color: var(--text-secondary); font-size: 1.1rem; 
-            margin-bottom: 40px; font-weight: 500; 
-        }
+        # --- FİLTRE UYGULAMA ---
+        df_f = res_df.copy()
+        if sec_ilce: df_f = df_f[df_f['Ilce'].isin(sec_ilce)]
+        if sec_asi: df_f = df_f[df_f['Urun'].isin(sec_asi)]
 
-        .top-warning {
-            background: #fff7ed; color: #c2410c; padding: 16px 20px; border-radius: var(--radius-md);
-            border: 1px solid #ffedd5; margin-bottom: 35px; 
-            text-align: center; font-weight: 600; font-size: 0.95rem;
-            display: flex; align-items: center; justify-content: center; gap: 12px;
-            box-shadow: var(--shadow-sm);
-        }
+        # --- ANA EKRAN GÖRÜNÜMÜ ---
+        st.markdown("---")
+        if s_tarih:
+            st.info(f"📅 **Dönemsel Tüketim Raporu:** {s_tarih} - {b_tarih} ({oto_gun_sayisi} Gün)")
 
-        /* Modern Kart Yapısı */
-        .form-section {
-            margin-bottom: 28px; padding: 30px; border-radius: var(--radius-lg); 
-            background-color: var(--bg-surface); 
-            transition: all 0.3s ease;
-            box-shadow: var(--shadow-sm);
-            border: 1px solid #e2e8f0;
-        }
-        .form-section:hover { box-shadow: var(--shadow-md); border-color: var(--primary-soft); transform: translateY(-2px); }
-
-        .bg-light { border-top: 4px solid var(--primary); }
-        .bg-child { background: linear-gradient(to bottom right, #f0f9ff, #ffffff); border-color: #bae6fd; }
-        .bg-adult { background: linear-gradient(to bottom right, #fdf4ff, #ffffff); border-color: #e8d5f5; }
-
-        label.main-label { display: block; margin-bottom: 12px; font-weight: 600; color: var(--text-primary); font-size: 0.95rem; }
-        h3 { font-weight: 700; margin-bottom: 20px; font-size: 1.25rem; display: flex; align-items: center; gap: 10px; color: var(--primary); }
-
-        input[type="date"], select {
-            width: 100%; padding: 16px 20px; border: 1px solid #cbd5e1; border-radius: var(--radius-md);
-            font-size: 1rem; color: var(--text-primary); background-color: #f8fafc; 
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); appearance: none; font-weight: 500;
-        }
-        input[type="date"]:focus, select:focus { 
-            outline: none; background-color: #fff; border-color: var(--primary); 
-            box-shadow: 0 0 0 4px var(--primary-soft);
-        }
-
-        #yasBilgisi {
-            margin-top: 18px; padding: 16px; background-color: var(--primary-soft); border-radius: var(--radius-md);
-            color: var(--primary); font-weight: 600; font-size: 0.95rem; 
-            display: none; animation: fadeIn 0.5s ease; border: 1px solid rgba(37, 99, 235, 0.1);
-        }
-
-        .checkbox-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-        @media (min-width: 600px) { .checkbox-grid { grid-template-columns: 1fr 1fr; } }
-
-        .checkbox-item {
-            display: flex; align-items: center; padding: 18px 22px; background: #ffffff; 
-            border: 1px solid #e2e8f0; border-radius: var(--radius-lg); cursor: pointer; 
-            transition: all 0.25s ease; font-size: 0.95rem; color: var(--text-secondary); font-weight: 500;
-            box-shadow: var(--shadow-sm);
-        }
-        .checkbox-item:hover { background-color: #f8fafc; border-color: #cbd5e1; transform: translateY(-1px); }
-        .checkbox-item input { margin-right: 16px; accent-color: var(--primary); width: 20px; height: 20px; }
-        .checkbox-item:has(input:checked) {
-            border-color: var(--primary); background-color: #f5faff; color: var(--primary);
-            font-weight: 600; box-shadow: var(--shadow-md);
-        }
-
-        button {
-            width: 100%; padding: 22px; 
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-            color: white; border: none; border-radius: var(--radius-lg); font-size: 1.2rem; font-weight: 700;
-            cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); margin-top: 40px; 
-            box-shadow: var(--shadow-primary); letter-spacing: 0.01em;
-        }
-        button:hover { transform: translateY(-3px); box-shadow: 0 15px 30px -5px rgba(79, 70, 229, 0.4); }
-        button:active { transform: translateY(-1px); }
-
-        #sonucAlani { margin-top: 60px; animation: slideUp 0.7s cubic-bezier(0.16, 1, 0.3, 1); display: none; }
-
-        .result-card {
-            background: white; padding: 28px; margin-bottom: 24px; border-radius: var(--radius-lg);
-            border-left: 4px solid; box-shadow: var(--shadow-md); transition: all 0.3s ease; position: relative;
-            break-inside: avoid;
-        }
-        .result-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+        # Metrikler
+        toplam_sevk = int(df_f[df_f['Gonderilecek'] > 0]['Gonderilecek'].sum())
+        kritik_sayisi = len(df_f[df_f['Durum'] == "🚨 KRİTİK"])
+        asiri_sayisi = len(df_f[df_f['Durum'] == "⚠️ AŞIRI"])
+        kurum_sayisi = df_f[df_f['Gonderilecek'] > 0]['Birim'].nunique()
         
-        .result-card.alert { border-left-color: var(--primary); } 
-        .result-card.warning { border-left-color: var(--accent-warning); } 
-        .result-card.info { border-left-color: var(--secondary); }
-        .result-card.faint { 
-            border-left-color: #cbd5e1; background-color: rgba(255, 255, 255, 0.6); opacity: 0.75;
-        }
-        .result-card.seasonal { 
-            border-left-color: #ec4899; background: #fdf2f8; border-color: #fbcfe8; 
-        }
-
-        .card-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 15px; }
-        .card-title { font-weight: 700; font-size: 1.15rem; color: var(--text-primary); flex: 1; line-height: 1.4; }
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("📦 SEVKİYAT (DOZ)", f"{toplam_sevk:,}".replace(",", "."))
+        m2.metric("🚨 KRİTİK STOK", kritik_sayisi)
+        m3.metric("⚠️ AŞIRI STOK", asiri_sayisi)
+        m4.metric("🏢 KURUM SAYISI", kurum_sayisi)
         
-        .status-toggle {
-            display: flex; align-items: center; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer;
-            background: #f1f5f9; padding: 10px 18px; border-radius: 999px; border: 1px solid transparent;
-            transition: all 0.2s; white-space: nowrap; font-weight: 600;
-        }
-        .status-toggle:hover { background-color: #e2e8f0; }
-        .status-toggle input { margin-right: 10px; width: 18px; height: 18px; accent-color: var(--accent-success); cursor: pointer; }
+        st.markdown("---")
 
-        .card-body { font-size: 1rem; color: #4b5563; white-space: pre-line; line-height: 1.7; padding-top: 12px; border-top: 1px solid #f1f5f9; margin-top: 12px; }
+        # --- 5 SEKMELİ YAPI ---
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "📦 Sevkiyat Planı", 
+            "⚠️ Fazla Stok Yönetimi", 
+            "📍 İlçe Bazlı Özet", 
+            "📊 İl Geneli",
+            "📉 Zayi ve Verimlilik Analizi"
+        ])
 
-        .result-card.completed { 
-            border-left-color: var(--accent-success) !important; background: #f0fdf4 !important; 
-            opacity: 0.7; transform: scale(0.98); box-shadow: none; border: 1px solid #bbf7d0;
-        }
-        .result-card.completed .card-title { text-decoration: line-through; color: var(--accent-success); }
-        .result-card.completed .status-toggle { background-color: #dcfce7; color: #166534; }
+        with tab1:
+            st.caption("Aşağıdaki liste sadece aşı gönderilmesi gereken (İhtiyaç > 0) kurumları içerir.")
+            f1_sevk = df_f[df_f['Gonderilecek'] > 0].copy()
+            durum_sirasi = {"🚨 KRİTİK": 0, "✅ Yeterli": 1, "⚠️ AŞIRI": 2}
+            f1_sevk['sort_key'] = f1_sevk['Durum'].map(durum_sirasi)
+            f1_sevk = f1_sevk.sort_values(['sort_key', 'Gonderilecek'], ascending=[True, False]).drop('sort_key', axis=1)
+            st.dataframe(f1_sevk[['Durum', 'Ilce', 'Birim', 'Urun', 'Tuketim', 'Stok', 'Gonderilecek', 'Yetme_Suresi']], use_container_width=True)
+            c1, c2 = st.columns(2)
+            with c1: st.download_button("📥 Sevkiyat Excel", to_excel(f1_sevk), "sevkiyat_plani.xlsx")
+            with c2: st.download_button("📥 Sevkiyat PDF", to_pdf(f1_sevk, "Sevkiyat Plani"), "sevkiyat_plani.pdf")
 
-        /* === TIMELINE === */
-        .catchup-timeline { position: relative; padding-left: 24px; margin-top: 20px; }
-        .catchup-timeline::before {
-            content: ''; position: absolute; left: 7px; top: 5px; bottom: 5px;
-            width: 2px; background-color: #e2e8f0;
-        }
-        .catchup-step { position: relative; margin-bottom: 24px; padding-left: 20px; break-inside: avoid; }
-        .catchup-step:last-child { margin-bottom: 0; }
-        .catchup-step::after {
-            content: ''; position: absolute; left: 0; top: 8px;
-            width: 16px; height: 16px; background-color: #fff; 
-            border: 3px solid var(--primary); border-radius: 50%; box-shadow: var(--shadow-sm);
-        }
-        .catchup-header {
-            color: var(--primary); font-weight: 700; font-size: 0.9rem;
-            text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;
-        }
-        .catchup-content {
-            color: var(--text-primary); font-weight: 500; font-size: 1rem;
-            background: #fff; padding: 14px 18px; border-radius: var(--radius-md);
-            border: 1px solid #e2e8f0; display: block;
-            box-shadow: var(--shadow-sm);
-        }
-
-        /* === BUTON GRUBU (Yazdır & Temizle) === */
-        .action-buttons {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 30px;
-        }
-        .print-btn, .reset-btn {
-            padding: 18px; border-radius: var(--radius-lg); font-weight: 700; cursor: pointer;
-            transition: all 0.2s; text-align: center; border: 2px solid #e2e8f0;
-        }
-        
-        .print-btn {
-            background: #ffffff; color: var(--text-primary); 
-        }
-        .print-btn:hover { background: #f8fafc; border-color: #cbd5e1; transform: translateY(-2px); }
-
-        .reset-btn {
-            background: #fef2f2; color: #dc2626; border-color: #fee2e2;
-        }
-        .reset-btn:hover { background: #fee2e2; border-color: #fecaca; transform: translateY(-2px); }
-
-        /* PRINT HEADER */
-        #printHeader { display: none; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-        #printHeader h2 { margin: 0; color: #000; font-size: 1.8rem; }
-        #printHeader p { margin: 5px 0 0 0; color: #444; font-size: 1rem; }
-
-        .hidden { display: none; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
-        .form-section:not(.hidden), #detayliRiskListesi:not(.hidden) { animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
-
-        /* === PRINT CSS === */
-        @media print {
-            @page { margin: 1.5cm; }
-            body { background: white; padding: 0; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .container { box-shadow: none; border: none; padding: 0; margin: 0; max-width: 100%; }
-            .form-section, button, .top-warning, .status-toggle, h1, .subtitle, .action-buttons { display: none !important; }
-            #printHeader { display: block; } 
-            #sonucAlani { display: block !important; margin-top: 0; animation: none; }
-            .result-card { 
-                box-shadow: none; border: 1px solid #ddd; border-left-width: 4px;
-                margin-bottom: 15px; padding: 15px; page-break-inside: avoid;
-            }
-            .catchup-content { border: 1px solid #ccc; box-shadow: none; }
-            a { text-decoration: none; color: black; }
-        }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h1>💉 Akıllı Aşı Asistanı</h1>
-    <p class="subtitle">Kişiselleştirilmiş Aşı Önerileri</p>
-
-    <div id="printHeader">
-        <h2>Aşı Takvimi Raporu</h2>
-        <p id="printInfoLine">Oluşturulma Tarihi: ...</p>
-    </div>
-
-    <div class="top-warning">
-        <span style="font-size: 1.5rem;">⚠️</span>
-        <div>Bu öneriler bilgilendirme amaçlıdır. Nihai karar için lütfen hekiminize danışınız.</div>
-    </div>
-
-    <div id="anaFormAlani">
-        <div class="form-section bg-light">
-            <label class="main-label">Doğum Tarihi:</label>
-            <input type="date" id="dogumTarihi" onchange="yasKontrolu()">
+        with tab2:
+            st.caption(f"Aşağıdaki liste, {asiri_esik} günden fazla stoğu bulunan ve 'Aşırı' olarak işaretlenen **ASM ve Son Kullanıcı** birimlerini içerir. (TSM ve İSM depoları hariç tutulmuştur)")
+            f1_asiri = df_f[df_f['Durum'] == "⚠️ AŞIRI"].copy().sort_values('Yetme_Suresi', ascending=False)
+            st.dataframe(f1_asiri[['Ilce', 'Birim', 'Urun', 'Stok', 'Yetme_Suresi']], use_container_width=True)
+            c3, c4 = st.columns(2)
+            with c3: st.download_button("📥 İade Excel", to_excel(f1_asiri), "asiri_stok.xlsx")
+            with c4: st.download_button("📥 İade PDF", to_pdf(f1_asiri, "Asiri Stok"), "asiri_stok.pdf")
             
-            <div id="yasBilgisi"></div>
+            # --- YENİ EKLENEN ÖLÜ STOK TABLOSU ---
+            st.markdown("---")
+            st.subheader("🕸️ Ölü Stok (Hiç Tüketimi Olmayan)")
+            st.caption("Aşağıdaki liste, stoğu bulunan ancak seçilen dönemde **hiç tüketim yapmamış (0 Doz)** ASM ve Son Kullanıcı birimlerini içerir.")
+            
+            # Ölü Stok Filtresi: Stok > 0 VE Tüketim == 0 VE (ASM veya SON KULLANICI)
+            f1_olu = df_f[
+                (df_f['Stok'] > 0) & 
+                (df_f['Tuketim'] == 0) &
+                (df_f['Tip'].astype(str).str.upper().apply(lambda x: any(k in x for k in ['ASM', 'SON KULLANICI'])))
+            ].copy().sort_values('Stok', ascending=False)
+            
+            if not f1_olu.empty:
+                st.dataframe(f1_olu[['Ilce', 'Birim', 'Urun', 'Stok']], use_container_width=True)
+                c_olu1, c_olu2 = st.columns(2)
+                with c_olu1: st.download_button("📥 Ölü Stok Excel", to_excel(f1_olu), "olu_stok.xlsx")
+                with c_olu2: st.download_button("📥 Ölü Stok PDF", to_pdf(f1_olu, "Olu Stok"), "olu_stok.pdf")
+            else:
+                st.success("Tebrikler! Ölü stok (hareketsiz ürün) bulunamadı.")
+            # -------------------------------------
 
-            <div style="margin-top: 30px;">
-                <label class="main-label">Cinsiyet:</label>
-                <select id="cinsiyet" onchange="yasKontrolu()">
-                    <option value="erkek">Erkek</option>
-                    <option value="kadin">Kadın</option>
-                </select>
-            </div>
-        </div>
-
-        <div id="cocukBolumu" class="form-section bg-child hidden">
-            <h3>👶 Çocuk Aşı Durumu</h3>
-            <label class="main-label">Çocuğun bugüne kadarki aşıları ulusal takvime göre yapıldı mı?</label>
-            <div class="checkbox-grid">
-                <label class="checkbox-item"><input type="radio" name="asiDurumu" value="tam" checked><span>✅ Evet (Yaşına göre tam aşılı)</span></label>
-                <label class="checkbox-item"><input type="radio" name="asiDurumu" value="eksik"><span>❌ Hayır (Aşıları eksik/yapılmadı)</span></label>
-            </div>
-            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 15px; padding-left: 5px;">ℹ️ "Hayır" seçerseniz telafi (hızlandırılmış) takvim oluşturulacaktır.</p>
-        </div>
-
-        <div id="gebelikBolumu" class="form-section bg-adult hidden">
-            <label class="main-label">🤰 Gebelik Durumu:</label>
-            <select id="gebelikDurumu">
-                <option value="hayir">Gebe Değil</option>
-                <option value="evet">Evet, Gebe</option>
-            </select>
-        </div>
-
-        <div id="meslekBolumu" class="form-section bg-adult hidden">
-            <label class="main-label">👨‍⚕️ Meslek / Risk Durumu:</label>
-            <select id="meslekDurumu">
-                <option value="diger">Diğer / Riskli Meslek Değil</option>
-                <option value="saglikci">⚕️ Sağlık Çalışanı / Stajyer</option>
-            </select>
-        </div>
-
-        <div id="eriskinBolumu" class="form-section bg-adult hidden">
-            <h3>🧑 Tıbbi Risk Faktörleri</h3>
-            <label class="main-label">Aşağıdaki hastalıklardan hangisi mevcut?</label>
-            <div class="checkbox-grid" style="margin-bottom: 30px;">
-                 <label class="checkbox-item"><input type="radio" name="ana_risk_durumu" value="hayir" onchange="riskDurumuDegisti()" checked> <span>Herhangi bir hastalığım/risk durumum yok</span></label>
-                 <label class="checkbox-item"><input type="radio" name="ana_risk_durumu" value="evet" onchange="riskDurumuDegisti()"> <span>Hastalığım/risk durumum var</span></label>
-            </div>
-            <div id="detayliRiskListesi" class="hidden">
-                <div style="padding: 28px; background-color: #fff7ed; border-radius: var(--radius-md); border: 1px solid #ffedd5;">
-                    <label class="main-label" style="font-size: 0.95rem; color: var(--accent-warning); margin-bottom: 20px;">Lütfen durumu seçiniz:</label>
-                    <div class="checkbox-grid">
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_metabolik" checked> Kronik Kalp / Akciğer / Diyabet (DM)</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_karaciger"> Kronik Karaciğer Hastalığı</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kronik_bobrek"> Kronik Böbrek Hastalığı</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="immunsupresyon"> İmmünsüpresyon / İmmünmodülatör Tedavi</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="aspleni"> Aspleni / Splenektomi / Orak Hücreli Anemi</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kompleman"> Kompleman Yetmezliği / Eculizumab Kullanımı</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="solid_organ"> Solid Organ Nakli Alıcıları</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="kok_hucre"> Hematopoetik Kök Hücre Nakli</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="hiv"> HIV / AIDS</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="pihtilasma"> Pıhtılaşma Bozukluğu</label>
-                        <label class="checkbox-item"><input type="radio" name="r_hastalik" value="bos_cochlear"> Kohlear İmplant / BOS Kaçağı</label>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <button onclick="sorgula()" id="sorgulaBtn">Sonuçları Göster</button>
-    </div>
-
-    <div id="sonucAlani">
-        <h3 style="justify-content: center;">📋 Önerilen Aşı Takvimi</h3>
+        with tab3:
+            df_i = df_f.groupby(['Ilce', 'Urun']).agg({'Tuketim': 'sum', 'Stok': 'sum'}).reset_index()
+            df_i['Ihtiyac'] = (((df_i['Tuketim'] / oto_gun_sayisi) * plan_suresi) * (1 + guvenlik_marji)) - df_i['Stok']
+            df_i['Gonderilecek'] = df_i['Ihtiyac'].apply(lambda x: np.ceil(x) if x > 0 else 0)
+            f2_visible = df_i[df_i['Gonderilecek'] > 0].copy().sort_values(['Ilce', 'Gonderilecek'], ascending=[True, False])
+            st.subheader("İlçe Bazlı Toplam İhtiyaçlar")
+            st.dataframe(f2_visible, use_container_width=True)
+            c5, c6 = st.columns(2)
+            with c5: st.download_button("📥 İlçe Excel", to_excel(f2_visible), "ilce_ozet.xlsx")
+            with c6: st.download_button("📥 İlçe PDF", to_pdf(f2_visible, "Ilce Ozet"), "ilce_ozet.pdf")
         
-        <div id="gripUyarisi" class="result-card seasonal hidden">
-            <div class="card-header-row">
-                <span class="card-title">🌬️ İnfluenza (Grip) Sezonu Uyarısı</span>
-            </div>
-            <span class="card-body">Şu an <strong>Eylül - Mart</strong> dönemindeyiz ve size İnfluenza (Grip) aşısı önerilmektedir. Lütfen aşı olmayı ihmal etmeyiniz.</span>
-        </div>
+        with tab4:
+            st.subheader("📊 İl Geneli Toplam Stok ve Tüketim Analizi")
+            st.caption("Bu tablo; Saha (ASM/TSM) verileri ile İl Ana Depo (İSM) verilerinin birleşimidir.")
+            
+            grp_tuketim_saha = df_t_saha.groupby('ÜRÜN TANIMI')['Tuketim'].sum()
+            grp_stok_saha = df_s_saha.groupby('ÜRÜN TANIMI')['Stok'].sum()
+            grp_stok_ism = df_s_ism.groupby('ÜRÜN TANIMI')['Stok'].sum()
+            grp_tuketim_ism = df_t_ism.groupby('ÜRÜN TANIMI')['Tuketim'].sum() 
+            grp_tuketim_total = grp_tuketim_saha.add(grp_tuketim_ism, fill_value=0)
+            
+            all_vaccines = grp_stok_saha.index.union(grp_stok_ism.index).union(grp_tuketim_total.index)
+            
+            df_genel = pd.DataFrame(index=all_vaccines)
+            df_genel.index.name = 'Urun'
+            
+            df_genel['İl Ana Depo (ISM)'] = grp_stok_ism
+            df_genel['Saha (TSM, ASM, Son)'] = grp_stok_saha
+            df_genel['Toplam Tüketim'] = grp_tuketim_total
+            
+            df_genel = df_genel.fillna(0)
+            df_genel['İl Geneli Stok'] = df_genel['İl Ana Depo (ISM)'] + df_genel['Saha (TSM, ASM, Son)']
+            
+            df_genel['Günlük ortalama tüketim'] = (df_genel['Toplam Tüketim'] / oto_gun_sayisi).round(2)
+            df_genel['Yetme Süresi (Gün)'] = df_genel.apply(
+                lambda r: round(r['İl Geneli Stok'] / r['Günlük ortalama tüketim'], 1) if r['Günlük ortalama tüketim'] > 0 else 999, axis=1
+            )
+            
+            df_genel = df_genel.reset_index()
+            cols_order = ['Urun', 'İl Geneli Stok', 'İl Ana Depo (ISM)', 'Saha (TSM, ASM, Son)', 
+                          'Toplam Tüketim', 'Günlük ortalama tüketim', 'Yetme Süresi (Gün)']
+            
+            if 'Urun' not in df_genel.columns:
+                 df_genel.rename(columns={df_genel.columns[0]: 'Urun'}, inplace=True)
+            
+            df_genel = df_genel[cols_order]
 
-        <div id="liste"></div>
-        
-        <div class="action-buttons">
-            <button onclick="window.print()" class="print-btn">🖨️ Yazdır / PDF</button>
-            <button onclick="temizle()" class="reset-btn">🔄 Yeni Sorgu</button>
-        </div>
-    </div>
-</div>
+            # --- GRAFİK (180 Gün Sınırı + Hover Değeri) ---
+            st.markdown("### ⏳ Aşı Bazlı Yetme Süresi Analizi")
+            st.caption("Renkler stok yeterlilik durumunu gösterir. (Yeşil: Güvenli, Kırmızı: Kritik). Çubuklar maksimum 180 gün ile sınırlandırılmıştır; gerçek değer için fareyle üzerine geliniz.")
+            
+            chart_df = df_genel.copy()
+            chart_df['Visual_Value'] = chart_df['Yetme Süresi (Gün)'].apply(lambda x: 180 if x > 180 else x)
+            chart_df['Label'] = chart_df['Yetme Süresi (Gün)'].apply(lambda x: "180+" if x > 180 else f"{x:.1f}")
 
-<script>
-    // === 1. HASSAS YAŞ HESAPLAMA MOTORU ===
-    function hesaplaTamYas(dogumTarihi, bugun) {
-        let yil = bugun.getFullYear() - dogumTarihi.getFullYear();
-        let ay = bugun.getMonth() - dogumTarihi.getMonth();
-        let gun = bugun.getDate() - dogumTarihi.getDate();
-        if (gun < 0) { ay--; const oncekiAy = new Date(bugun.getFullYear(), bugun.getMonth(), 0).getDate(); gun += oncekiAy; }
-        if (ay < 0) { yil--; ay += 12; }
-        const toplamAy = (yil * 12) + ay;
-        return { yil, ay, gun, toplamAy };
-    }
+            def get_chart_color(val):
+                if val < 15: return '#ff4b4b'
+                elif val < 30: return '#ffa500'
+                elif val < 60: return '#ffe066'
+                else: return '#90ee90'
+            
+            chart_df['Color'] = chart_df['Yetme Süresi (Gün)'].apply(get_chart_color)
+            
+            base = alt.Chart(chart_df).encode(
+                x=alt.X('Urun', sort='-y', title='Aşılar'),
+                tooltip=['Urun', 'Yetme Süresi (Gün)', 'İl Geneli Stok', 'Günlük ortalama tüketim']
+            )
 
-    // === 2. ARAYÜZ VE KONTROLLER ===
-    function riskDurumuDegisti() {
-        const anaDurum = document.querySelector('input[name="ana_risk_durumu"]:checked').value;
-        const detayListesi = document.getElementById('detayliRiskListesi');
-        if (anaDurum === 'evet') { detayListesi.classList.remove('hidden'); } else { detayListesi.classList.add('hidden'); }
-    }
+            bars = base.mark_bar().encode(
+                y=alt.Y('Visual_Value', title='Yetme Süresi (Gün) [Maks 180]'),
+                color=alt.Color('Color', scale=None, legend=None)
+            )
 
-    function yasKontrolu() {
-        const dtInput = document.getElementById('dogumTarihi').value;
-        const yasBilgisiDiv = document.getElementById('yasBilgisi');
-        if (!dtInput) { yasBilgisiDiv.style.display = 'none'; return; }
+            text = base.mark_text(align='center', baseline='bottom', dy=-5).encode(
+                y='Visual_Value',
+                text='Label'
+            )
 
-        const dogumTarihi = new Date(dtInput);
-        const bugun = new Date();
-        
-        if (dogumTarihi > bugun) {
-            yasBilgisiDiv.style.display = 'block'; yasBilgisiDiv.innerHTML = "⚠️ İleri bir tarih seçtiniz.";
-            yasBilgisiDiv.style.backgroundColor = "#fef2f2"; yasBilgisiDiv.style.borderColor = "#fee2e2"; yasBilgisiDiv.style.color = "#dc2626";
-            return;
-        }
+            chart = (bars + text).properties(height=400).interactive()
+            st.altair_chart(chart, use_container_width=True)
+            # ---------------------------------------------
 
-        const yas = hesaplaTamYas(dogumTarihi, bugun);
-        yasBilgisiDiv.style.display = 'block';
-        yasBilgisiDiv.style.backgroundColor = ""; yasBilgisiDiv.style.borderColor = ""; yasBilgisiDiv.style.color = "";
-        yasBilgisiDiv.innerHTML = `📅 Yaşınız: ${yas.yil} Yıl ${yas.ay} Ay ${yas.gun} Gün`;
-        
-        const cinsiyet = document.getElementById('cinsiyet').value;
-        const cocukDiv = document.getElementById('cocukBolumu');
-        const eriskinDiv = document.getElementById('eriskinBolumu');
-        const gebelikDiv = document.getElementById('gebelikBolumu');
-        const meslekDiv = document.getElementById('meslekBolumu');
+            def highlight_yetme_suresi(val):
+                if not isinstance(val, (int, float)): return ''
+                if val < 15: return 'background-color: #ff4b4b; color: white'
+                elif val < 30: return 'background-color: #ffa500; color: black'
+                elif val < 60: return 'background-color: #ffe066; color: black'
+                else: return 'background-color: #90ee90; color: black'
 
-        if (yas.toplamAy < 216) {
-            eriskinDiv.classList.add('hidden'); gebelikDiv.classList.add('hidden'); meslekDiv.classList.add('hidden');
-            if (yas.toplamAy < 4) {
-                cocukDiv.classList.add('hidden');
-                const tamRadio = document.querySelector('input[name="asiDurumu"][value="tam"]');
-                if(tamRadio) tamRadio.checked = true;
-            } else { cocukDiv.classList.remove('hidden'); }
-        } else {
-            cocukDiv.classList.add('hidden'); eriskinDiv.classList.remove('hidden');
-            if (cinsiyet === 'kadin' && yas.yil >= 18 && yas.yil <= 49) { gebelikDiv.classList.remove('hidden'); } 
-            else { gebelikDiv.classList.add('hidden'); document.getElementById('gebelikDurumu').value = "hayir"; }
-            if (yas.yil >= 18 && yas.yil <= 65) { meslekDiv.classList.remove('hidden'); } 
-            else { meslekDiv.classList.add('hidden'); document.getElementById('meslekDurumu').value = "diger"; }
-        }
-    }
-    document.addEventListener('DOMContentLoaded', yasKontrolu);
+            styled_df = df_genel.style.map(highlight_yetme_suresi, subset=['Yetme Süresi (Gün)'])
+            styled_df = styled_df.format({
+                "Günlük ortalama tüketim": "{:.2f}", 
+                "Yetme Süresi (Gün)": "{:.1f}",
+                "İl Geneli Stok": "{:.0f}",
+                "İl Ana Depo (ISM)": "{:.0f}",
+                "Saha (TSM, ASM, Son)": "{:.0f}",
+                "Toplam Tüketim": "{:.0f}"
+            })
+            
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+            
+            c7, c8 = st.columns(2)
+            with c7: st.download_button("📥 İl Geneli Excel", to_excel(df_genel), "il_geneli_ozet.xlsx")
+            with c8: st.download_button("📥 İl Geneli PDF", to_pdf(df_genel, "Il Geneli Stok ve Tuketim"), "il_geneli_ozet.pdf")
 
-    // === 3. KART DURUM DEĞİŞTİRME ===
-    function durumDegistir(cardId) {
-        const card = document.getElementById(cardId);
-        const checkbox = card.querySelector('input[type="checkbox"]');
-        const labelText = card.querySelector('.status-text');
-        if (checkbox.checked) { card.classList.add('completed'); labelText.textContent = "✅ TAMAMLANDI"; } 
-        else { card.classList.remove('completed'); labelText.textContent = "Bu aşıyı oldum"; }
-    }
+        with tab5:
+            st.subheader("📉 Zayi ve Verimlilik Analizi")
+            
+            analiz_turu = st.radio(
+                "Analiz Türü Seçin:",
+                ("Tüm Aşılar (Genel Görünüm)", "Sadece Tekli Doz Aşılar (Kritik Analiz)"),
+                horizontal=True
+            )
+            
+            st.info("💡 Not: 'Sadece Tekli Doz' seçeneği; BCG, Oral Polio ve PPD gibi çoklu dozlu aşıları hariç tutarak, operasyonel zayiyi (kırılma, soğuk zincir vb.) gösterir.")
 
-    // === 4. YENİ SORGULAMA (RESET) ===
-    function temizle() {
-        document.getElementById('dogumTarihi').value = "";
-        document.getElementById('yasBilgisi').style.display = 'none';
-        document.getElementById('cinsiyet').value = "erkek";
-        document.querySelector('input[name="asiDurumu"][value="tam"]').checked = true;
-        document.querySelector('input[name="ana_risk_durumu"][value="hayir"]').checked = true;
-        document.querySelector('input[name="r_hastalik"][value="kronik_metabolik"]').checked = true;
-        document.getElementById('cocukBolumu').classList.add('hidden');
-        document.getElementById('eriskinBolumu').classList.add('hidden');
-        document.getElementById('detayliRiskListesi').classList.add('hidden');
-        document.getElementById('gebelikBolumu').classList.add('hidden');
-        document.getElementById('meslekBolumu').classList.add('hidden');
-        document.getElementById('sonucAlani').style.display = 'none';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+            df_zayi = df_f.copy()
+            
+            if analiz_turu == "Sadece Tekli Doz Aşılar (Kritik Analiz)":
+                df_zayi = df_zayi[~df_zayi['Urun'].str.upper().str.contains('BCG|POLIO|PPD', regex=True)]
 
-    // === 5. TIMELINE & TAKVİM VERİSİ ===
-    function createStep(zaman, asilar) {
-        return `<div class="catchup-step"><div class="catchup-header">${zaman}</div><div class="catchup-content">${asilar}</div></div>`;
-    }
-    const ulusalTakvim = {
-        0:  ["Hepatit B (1. Doz)"], 
-        1:  ["Hepatit B (2. Doz) - 1. Ayın Sonunda"], 
-        2:  ["BCG (Verem)", "KPA (1. Doz)", "6'lı karma aşı (DaBT-İPA-Hib-HepB) (1. Doz)"], 
-        4:  ["KPA (2. Doz)", "6'lı karma aşı (DaBT-İPA-Hib-HepB) (2. Doz)"], 
-        6:  ["KPA (3. Doz)", "6'lı karma aşı (DaBT-İPA-Hib-HepB) (3. Doz)", "OPA (Oral Polio)"], 
-        9:  ["Ek Doz KKK (Salgın durumu varsa/Doktor kararı)"], 
-        12: ["KPA (Pekiştirme)", "KKK (1. Doz)", "Suçiçeği"], 
-        18: ["6'lı karma aşı (DaBT-İPA-Hib-HepB) (Pekiştirme)", "Hep-A (1. Doz)", "OPA (Pekiştirme)"], 
-        24: ["Hep-A (2. Doz)"], 
-        48: ["KKK (2. Doz)", "4'lü Karma"], 
-        156: ["Td (Erişkin Tipi Tetanoz-Difteri) - 13 Yaş Hatırlatma Dozu"]
-    };
+            zayi_ozet = df_zayi.groupby('Ilce').agg({'Tuketim': 'sum', 'Zayi': 'sum'}).reset_index()
+            zayi_ozet['Zayi Oranı (%)'] = zayi_ozet.apply(lambda x: (x['Zayi'] / (x['Tuketim'] + x['Zayi']) * 100) if (x['Tuketim'] + x['Zayi']) > 0 else 0, axis=1).round(2)
+            zayi_ozet = zayi_ozet.sort_values('Zayi', ascending=False)
+            
+            col_z1, col_z2 = st.columns(2)
+            
+            with col_z1:
+                st.markdown("#### 🏙️ İlçelere Göre Zayi Durumu")
+                st.dataframe(zayi_ozet, use_container_width=True, hide_index=True)
+            
+            with col_z2:
+                st.markdown("#### 💉 Aşılara Göre Toplam Zayi")
+                asi_zayi = df_zayi.groupby('Urun')['Zayi'].sum().reset_index().sort_values('Zayi', ascending=False)
+                st.dataframe(asi_zayi, use_container_width=True, hide_index=True)
+            
+            st.markdown("---")
+            st.markdown(f"#### 🏢 En Çok Zayi Veren 20 Kurum ({analiz_turu})")
+            
+            kurum_zayi = df_zayi.groupby(['Ilce', 'Birim', 'Urun']).agg({'Zayi': 'sum'}).reset_index()
+            kurum_zayi = kurum_zayi[kurum_zayi['Zayi'] > 0].sort_values('Zayi', ascending=False).head(20)
+            
+            st.dataframe(kurum_zayi, use_container_width=True, hide_index=True)
+            
+            c9, c10 = st.columns(2)
+            with c9: st.download_button("📥 Zayi Analizi Excel", to_excel(zayi_ozet), "zayi_analizi.xlsx")
+            with c10: st.download_button("📥 Zayi Analizi PDF", to_pdf(zayi_ozet, "Zayi Analizi"), "zayi_analizi.pdf")
 
-    function sorgula() {
-        const dtInput = document.getElementById('dogumTarihi').value;
-        if (!dtInput) { alert("Lütfen doğum tarihi giriniz."); return; }
-
-        const dogumTarihi = new Date(dtInput);
-        const bugun = new Date();
-        const yas = hesaplaTamYas(dogumTarihi, bugun);
-
-        // PRINT HEADER
-        const gunAyYil = bugun.toLocaleDateString('tr-TR');
-        document.getElementById('printInfoLine').innerHTML = `<strong>Tarih:</strong> ${gunAyYil} <br> <strong>Hasta Yaşı:</strong> ${yas.yil} Yıl ${yas.ay} Ay ${yas.gun} Gün`;
-
-        let oneriler = [];
-
-        // SENARYO 1: ÇOCUK TELAFİ
-        if (yas.toplamAy < 216) {
-            const durum = document.querySelector('input[name="asiDurumu"]:checked').value;
-            if (durum === 'tam') {
-                if (ulusalTakvim[yas.toplamAy]) { 
-                    ulusalTakvim[yas.toplamAy].forEach(asi => { oneriler.push({baslik: asi, detay: "Bu ay (doldurulan ay) takvime göre yapılmalıdır.", tip: "alert"}); }); 
-                } else {
-                    oneriler.push({baslik: "Bu Ay Rutin Aşı Yok", detay: "Bebeğiniz şu an " + yas.ay + ". ayını doldurmuştur. Bir sonraki aşı zamanını bekleyiniz.", tip: "info"});
-                }
-            } else {
-                let plan = `<div class="catchup-timeline">`;
-                if (yas.toplamAy >= 4 && yas.toplamAy <= 11) {
-                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, Önce PPD, 2 gün sonra BCG");
-                    plan += createStep("1 Ay Sonra", "DaBT-İPA-Hib-HepB");
-                    plan += createStep("2 Ay Sonra", "DaBT-İPA-Hib-HepB, OPA, KPA");
-                    plan += createStep("6 Ay Sonra", "DaBT-İPA-Hib-HepB, OPA, KPA");
-                    plan += createStep("Not", "Ek doz KKK (9.ay), KKK-Suçiçeği (12.ay), Hep-A (18.ay)");
-                } else if (yas.toplamAy >= 12 && yas.toplamAy <= 14) {
-                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, PPD");
-                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
-                    plan += createStep("2 Ay Sonra", "DaBT-İPA-Hib-HepB, OPA, KPA");
-                    plan += createStep("6 Ay Sonra", "DaBT-İPA, HepB, OPA, KPA");
-                } else if (yas.toplamAy >= 15 && yas.toplamAy <= 17) {
-                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, PPD");
-                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
-                    plan += createStep("2 Ay Sonra", "DaBT-İPA, HepB, OPA, KPA");
-                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, KPA");
-                } else if (yas.toplamAy >= 18 && yas.toplamAy <= 23) {
-                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, Hep-A, PPD");
-                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
-                    plan += createStep("2 Ay Sonra", "DaBT-İPA, HepB, OPA, KPA");
-                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, KPA, Hep-A");
-                } else if (yas.toplamAy >= 24 && yas.toplamAy <= 47) {
-                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, Hep-A, PPD");
-                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
-                    plan += createStep("2 Ay Sonra", "DaBT-İPA, HepB, OPA");
-                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, KPA, Hep-A");
-                } else if (yas.toplamAy >= 48 && yas.toplamAy <= 59) {
-                    plan += createStep("İlk Karşılaşma", "DaBT-İPA-Hib-HepB, KPA, Hep-A, PPD");
-                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
-                    plan += createStep("1 Ay Sonra", "DaBT-İPA, OPA, Hep-B, KKK");
-                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, Hep-A, Hep-B");
-                } else if (yas.toplamAy >= 60 && yas.toplamAy <= 71) {
-                    plan += createStep("İlk Karşılaşma", "DaBT-İPA, Hep-B, KPA, Hep-A, PPD");
-                    plan += createStep("2 Gün Sonra", "KKK, Suçiçeği, gerekirse BCG");
-                    plan += createStep("1 Ay Sonra", "DaBT-İPA, OPA, Hep-B, KKK");
-                    plan += createStep("6 Ay Sonra", "DaBT-İPA, OPA, Hep-A, Hep-B");
-                } else if (yas.toplamAy >= 72) {
-                    plan += createStep("1. Karşılaşma", "Tdab/Td, İPA/OPA, Hep-B, Hep-A, KKK, Suçiçeği");
-                    plan += createStep("2. Karşılaşma (1 Ay Sonra)", "Tdab/Td, OPA/İPA, Hep-B, KKK");
-                    plan += createStep("Tamamlama (6 ay sonra)", "Tdab/Td, OPA/İPA, Hep-B, Hep-A");
-                } else {
-                    plan += createStep("Bilgi", "4 aydan küçük bebekler için standart takvime uyulmalıdır.");
-                }
-                plan += `</div>`;
-                oneriler.push({baslik: "🚨 TELAFİ PLANI (Aşısız/Eksik)", detay: plan, tip: "alert"});
-            }
-        }
-        // SENARYO 2: ERİŞKİN
-        else {
-            const gebelikDurumu = document.getElementById('gebelikDurumu').value === 'evet';
-            const saglikciDurumu = document.getElementById('meslekDurumu').value === 'saglikci';
-            const anaRisk = document.querySelector('input[name="ana_risk_durumu"]:checked').value;
-            let seciliHastalik = 'yok';
-            if (anaRisk === 'evet') { seciliHastalik = document.querySelector('input[name="r_hastalik"]:checked').value; }
-
-            if (gebelikDurumu) {
-                oneriler.push({baslik: "Mevsimsel İnfluenza (Grip)", detay: "Gebeliğin 2. veya 3. trimesterinde, her yıl EYLÜL–MART döneminde 1 doz önerilir.", tip: "alert"});
-                const tdapDetay = `<span class="step-header">A) Primer Serisi TAM OLANLAR (Her Gebelikte):</span>1 doz Tdap, tercihen 18–24. haftalarda (en geç 32. haftanın sonuna kadar).<span class="step-header">B) Primer Serisi EKSİK OLANLAR:</span>1. doz Tdap 18–24. haftalarda. 2. doz Td 28–32. haftalarda.`;
-                oneriler.push({baslik: "Tdap / Td (Tetanoz-Boğmaca)", detay: tdapDetay, tip: "alert"});
-            }
-
-            if (saglikciDurumu) {
-                oneriler.push({baslik: "Td (Erişkin tip Tetanoz-Difteri) Aşısı", detay: "Daha önce aşılanma durumu kayıtlı olmayan tüm sağlık çalışanlarının 3 doz Td aşısı ile primer bağışıklamalarının tamamlanması gerekmektedir.\nPrimer serisi tamamlanan tüm sağlık çalışanlarına 10 yılda bir hatırlatma dozu yapılmalıdır.", tip: "alert"});
-                if (gebelikDurumu) { oneriler.push({baslik: "KKK (Kızamık-Kızamıkçık-Kabakulak) Aşısı", detay: "⚠️ Gebelik nedeniyle şu an KONTRENDİKEDİR (Yapılamaz).", tip: "warning"}); } 
-                else { oneriler.push({baslik: "KKK (Kızamık-Kızamıkçık-Kabakulak) Aşısı", detay: "Hastalığı geçirmemiş veya bağışıklığı olmayanlara en az 1 ay ara ile iki doz KKK aşısı önerilir.", tip: "info"}); }
-                oneriler.push({baslik: "Mevsimsel İnfluenza (Grip) Aşısı", detay: "Her yıl 1 doz aşı uygulaması önerilir.", tip: "info"});
-                if (gebelikDurumu) { oneriler.push({baslik: "Suçiçeği Aşısı", detay: "⚠️ Gebelik nedeniyle şu an KONTRENDİKEDİR.", tip: "warning"}); } 
-                else { oneriler.push({baslik: "Suçiçeği Aşısı", detay: "Hastalığı geçirmemiş veya bağışıklığı olmayanlara en az 1 ay ara ile iki doz aşı önerilir.", tip: "info"}); }
-                oneriler.push({baslik: "Hepatit B Aşısı", detay: "Sağlık çalışanları için mesleki temas riskleri nedeniyle önerilir.", tip: "alert"});
-                oneriler.push({baslik: "Hepatit A Aşısı", detay: "Riskli birimlerde çalışan sağlık personeli için önerilir.", tip: "info"});
-                oneriler.push({baslik: "Meningokok Aşısı", detay: "Sadece laboratuvarda meningokok ile karşılaşma ihtimali bulunan personele önerilir.", tip: "faint"});
-            }
-
-            if (!gebelikDurumu && !saglikciDurumu && yas.yil >= 18) {
-                oneriler.push({baslik: "Erişkin Tip Tetanos-Difteri (Td)", detay: "Eksik ise 3 doz birincil bağışıklama, tam ise 10 yılda bir hatırlatma.", tip: "info"});
-            }
-
-            switch (seciliHastalik) {
-                case 'kronik_metabolik': oneriler.push({baslik: "Pnömokok (Zatürre) Aşıları", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Aşılar arasında en az 1 YIL ara olmalıdır.", tip: "alert"}); break;
-                case 'kronik_karaciger': oneriler.push({baslik: "Kronik Karaciğer Hastalığı", detay: "• Hepatit A\n• Hepatit B\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n👉 Pnömokok aşıları arasında en az 1 YIL ara olmalıdır.", tip: "alert"}); break;
-                case 'kronik_bobrek': oneriler.push({baslik: "Kronik Böbrek Hastalığı", detay: "• Hepatit B Aşısı", tip: "alert"}); break;
-                case 'immunsupresyon': oneriler.push({baslik: "İmmünsüpresyon / İmmünmodülatör Tedavi", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Meningokok Aşısı (Meningokoksemiden korunma için)", tip: "alert"}); break;
-                case 'aspleni': oneriler.push({baslik: "Aspleni / Orak Hücreli Anemi / Splenektomi", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı\n• İnfluenza (Grip) Aşısı", tip: "alert"}); break;
-                case 'kompleman': oneriler.push({baslik: "Kompleman Yetmezliği / Eculizumab", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı", tip: "alert"}); break;
-                case 'bos_cochlear': oneriler.push({baslik: "BOS Kaçağı / Kohlear İmplant", detay: "• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n• Meningokok Aşısı", tip: "alert"}); break;
-                case 'solid_organ': oneriler.push({baslik: "Solid Organ Nakli Alıcıları", detay: "• Hepatit A\n• Hepatit B\n• Suçiçeği", tip: "alert"}); break;
-                case 'kok_hucre': oneriler.push({baslik: "Hematopoetik Kök Hücre Nakli", detay: "• Hepatit A\n• Hepatit B\n• KKK (Kızamık-Kızamıkçık-Kabakulak)\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23)\n• Haemophilus influenzae tip B (Hib)\n• Suçiçeği\n• İnaktif Polio Aşısı", tip: "alert"}); break;
-                case 'hiv': oneriler.push({baslik: "HIV / AIDS", detay: "• Hepatit A\n• Hepatit B\n• KKK (Kızamık-Kızamıkçık-Kabakulak)\n• Konjuge Pnömokok Aşısı (KPA13)\n• Polisakkarit Pnömokok Aşısı (PPA23) (En az 8 hafta ara ile)\n• Haemophilus influenzae tip B (Hib)\n👉 Aşılama takvimi CD4 sayısına göre uzman tarafından değerlendirilmelidir.", tip: "alert"}); break;
-                case 'pihtilasma': oneriler.push({baslik: "Pıhtılaşma Bozukluğu", detay: "• Hepatit A Aşısı", tip: "alert"}); break;
-            }
-
-            if (yas.yil >= 65) {
-                const fluVar = ['aspleni'].includes(seciliHastalik);
-                const pneuVar = ['kronik_metabolik', 'kronik_karaciger', 'immunsupresyon', 'aspleni', 'kompleman', 'kok_hucre', 'hiv', 'bos_cochlear'].includes(seciliHastalik);
-                if (!fluVar) { oneriler.push({baslik: "Mevsimsel İnfluenza (Grip)", detay: "65 yaş üstü herkese yıllık önerilir.", tip: "info"}); }
-                if (!pneuVar) { oneriler.push({baslik: "Pnömokok Aşısı", detay: "65 yaş üstü herkese (KPA13 + 1 yıl sonra PPA23) önerilir.", tip: "warning"}); }
-            }
-        }
-
-        // --- YENİ MANTIK: GRİP UYARISI SADECE ÖNERİLERDE VARSA ÇIKSIN ---
-        // 1. Önce sezonu kontrol et
-        const ay = bugun.getMonth(); // 0=Ocak, 11=Aralık
-        const gripZamani = (ay >= 8 || ay <= 2);
-        
-        // 2. Sonra öneri listesinde "İnfluenza" veya "Grip" geçiyor mu diye bak
-        const gripAsisiVarMi = oneriler.some(item => item.baslik.includes("İnfluenza") || item.baslik.includes("Grip"));
-
-        const gripUyarisiDiv = document.getElementById('gripUyarisi');
-        // 3. Her iki koşul da (Sezon + Öneri) sağlanıyorsa göster
-        if (gripZamani && gripAsisiVarMi) { 
-            gripUyarisiDiv.classList.remove('hidden'); 
-        } else { 
-            gripUyarisiDiv.classList.add('hidden'); 
-        }
-        // ----------------------------------------------------------------
-
-        const liste = document.getElementById('liste');
-        liste.innerHTML = "";
-        
-        if (oneriler.length === 0) {
-            liste.innerHTML = "<div class='result-card info'>Tebrikler, mevcut risklerinize göre ek bir aşı önerisi bulunmamaktadır.</div>";
-        } else {
-            oneriler.forEach((item, index) => {
-                const isTelafi = item.baslik.includes("TELAFİ PLANI");
-                const checkboxHTML = isTelafi ? '' : `<label class="status-toggle"><input type="checkbox" onchange="durumDegistir('card-${index}')"><span class="status-text">Bu aşıyı oldum</span></label>`;
-                const extraClass = (item.tip === 'faint') ? 'faint' : item.tip;
-                liste.innerHTML += `<div class="result-card ${extraClass}" id="card-${index}"><div class="card-header-row"><span class="card-title">${item.baslik}</span>${checkboxHTML}</div><span class="card-body">${item.detay}</span></div>`;
-            });
-        }
-        document.getElementById('sonucAlani').style.display = 'block';
-    }
-</script>
-
-</body>
-</html>
+    except Exception as e:
+        st.error(f"Hata: {e}")
+else:
+    st.info("Lütfen dosyaları yükleyin.")

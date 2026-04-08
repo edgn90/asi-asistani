@@ -297,6 +297,14 @@
             </select>
         </div>
 
+        <div id="seyahatBolumu" class="form-section bg-adult hidden">
+            <label class="main-label">✈️ Seyahat Durumu:</label>
+            <select id="seyahatDurumu">
+                <option value="yok">Planlanan riskli seyahat yok</option>
+                <option value="hac">🕋 Hac / Umre Seyahati Planım Var</option>
+            </select>
+        </div>
+
         <div id="eriskinBolumu" class="form-section bg-adult hidden">
             <h3>🧑 Tıbbi Risk Faktörleri</h3>
             <label class="main-label">Aşağıdaki hastalıklardan hangisi mevcut?</label>
@@ -389,9 +397,10 @@
         const eriskinDiv = document.getElementById('eriskinBolumu');
         const gebelikDiv = document.getElementById('gebelikBolumu');
         const meslekDiv = document.getElementById('meslekBolumu');
+        const seyahatDiv = document.getElementById('seyahatBolumu'); // YENİ EKLENDİ
 
         if (yas.toplamAy < 216) {
-            eriskinDiv.classList.add('hidden'); gebelikDiv.classList.add('hidden'); meslekDiv.classList.add('hidden');
+            eriskinDiv.classList.add('hidden'); gebelikDiv.classList.add('hidden'); meslekDiv.classList.add('hidden'); seyahatDiv.classList.add('hidden'); // GÜNCELLENDİ
             if (yas.toplamAy < 4) {
                 cocukDiv.classList.add('hidden');
                 const tamRadio = document.querySelector('input[name="asiDurumu"][value="tam"]');
@@ -403,6 +412,8 @@
             else { gebelikDiv.classList.add('hidden'); document.getElementById('gebelikDurumu').value = "hayir"; }
             if (yas.yil >= 18 && yas.yil <= 65) { meslekDiv.classList.remove('hidden'); } 
             else { meslekDiv.classList.add('hidden'); document.getElementById('meslekDurumu').value = "diger"; }
+            
+            seyahatDiv.classList.remove('hidden'); // YENİ EKLENDİ
         }
     }
     document.addEventListener('DOMContentLoaded', yasKontrolu);
@@ -429,6 +440,8 @@
         document.getElementById('detayliRiskListesi').classList.add('hidden');
         document.getElementById('gebelikBolumu').classList.add('hidden');
         document.getElementById('meslekBolumu').classList.add('hidden');
+        document.getElementById('seyahatBolumu').classList.add('hidden'); // YENİ EKLENDİ
+        document.getElementById('seyahatDurumu').value = "yok"; // YENİ EKLENDİ
         document.getElementById('sonucAlani').style.display = 'none';
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -527,9 +540,19 @@
         else {
             const gebelikDurumu = document.getElementById('gebelikDurumu').value === 'evet';
             const saglikciDurumu = document.getElementById('meslekDurumu').value === 'saglikci';
+            const hacDurumu = document.getElementById('seyahatDurumu').value === 'hac'; // YENİ EKLENDİ
             const anaRisk = document.querySelector('input[name="ana_risk_durumu"]:checked').value;
             let seciliHastalik = 'yok';
             if (anaRisk === 'evet') { seciliHastalik = document.querySelector('input[name="r_hastalik"]:checked').value; }
+
+            // YENİ EKLENEN HAC KURALI
+            if (hacDurumu) {
+                oneriler.push({
+                    baslik: "Meningokok (ACWY veya ACWYX) Aşısı", 
+                    detay: "🕋 Hac / Umre seyahati için ZORUNLUDUR. Seyahatten en az 10 gün önce yapılmalıdır.", 
+                    tip: "alert"
+                });
+            }
 
             if (gebelikDurumu) {
                 oneriler.push({baslik: "Mevsimsel İnfluenza (Grip)", detay: "Gebeliğin 2. veya 3. trimesterinde, her yıl EYLÜL–MART döneminde 1 doz önerilir.", tip: "alert"});
